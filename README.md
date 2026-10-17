@@ -1,2 +1,42 @@
-# StarAnaly-Arbiter
-An enterprise-grade AI Agent workspace built with Java 21, Spring Boot 3, and Vue 3, featuring intelligent task execution, tool calling, RAG knowledge retrieval, and data analytics.
+# 星析 Agent · StarAnaly
+
+> 一个面向智能任务执行与数据分析的 AI Agent 项目。目前处于项目初始化阶段，以下功能和架构是开发规划，尚未提供可运行的应用。
+
+StarAnaly 计划将自然语言交互、工具调用、知识检索与数据分析整合在同一个工作空间中，帮助用户把问题转化为可追踪的任务与结果。
+
+## 当前状态
+
+仓库目前仅包含本 README、`.gitignore` 和 MIT 许可证。后端、前端、数据库配置、容器编排及下述 Agent 功能均尚未实现。因此暂时没有安装、启动或演示步骤。
+
+## 规划功能
+
+| 模块 | 目标 | 状态 |
+| --- | --- | --- |
+| 智能任务执行 | 理解任务、规划步骤并记录执行过程 | 规划中 |
+| 工具调用 | 通过受控接口调用外部工具与服务 | 规划中 |
+| 知识检索 | 检索项目知识并为回答提供依据（RAG） | 规划中 |
+| 数据分析 | 汇总数据、生成分析结果与可视化视图 | 规划中 |
+| 工作空间界面 | 管理任务、查看过程与结果 | 规划中 |
+
+## 拟采用的技术栈
+
+- 后端：Java 21、Spring Boot 3、Maven；采用模块化单体架构。
+- 前端：Vue 3、TypeScript。
+- 数据存储：MySQL、Redis。
+- 模型接入：兼容 OpenAI API 的在线模型。
+- 本地开发与部署：Docker Compose。
+
+以上是技术选型，仓库目前还没有相应的项目文件或配置。
+
+## 开发路线
+
+1. 建立前后端项目骨架、配置管理与本地开发环境。
+2. 接入模型服务，实现基础对话与任务记录。
+3. 逐步加入任务规划、工具调用、知识检索和数据分析。
+4. 补充测试、文档及部署方案。
+
+路线仅表示计划，具体范围和顺序会随实现情况调整。
+
+## 许可证
+
+本项目采用 [MIT License](LICENSE)。
