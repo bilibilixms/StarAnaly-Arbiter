@@ -14,6 +14,6 @@ spring:
 
 staranaly:
   model:
-    base-url: ${MODEL_BASE_URL:https://api.openai.com/v1}
-    api-key: ${MODEL_API_KEY:}
-    name: ${MODEL_NAME:}
+    base-url: ${MODEL_BASE_URL:https://api.deepseek.com}
+    api-key: ${MODEL_API_KEY:${DEEPSEEK_API_KEY:}}
+    name: ${MODEL_NAME:deepseek-flash}

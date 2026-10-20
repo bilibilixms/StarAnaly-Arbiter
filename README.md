@@ -23,11 +23,14 @@
 | `MYSQL_PASSWORD` | 应用使用的 MySQL 账号密码 |
 | `MYSQL_USER` | 应用使用的 MySQL 用户，默认 `staranaly` |
 | `REDIS_PASSWORD` | 启动 Redis 时使用；只启动 MySQL 时暂不需要 |
-| `MODEL_NAME` | 模型服务中的模型名称；使用对话功能时必需 |
-| `MODEL_API_KEY` | 模型服务密钥；使用对话功能时必需 |
-| `MODEL_BASE_URL` | 模型 API 基础地址，默认 `https://api.openai.com/v1` |
+| `MODEL_NAME` | 模型名称，默认 `deepseek-flash` |
+| `MODEL_API_KEY` | 模型服务密钥；设置后优先使用 |
+| `DEEPSEEK_API_KEY` | DeepSeek 密钥；未设置 `MODEL_API_KEY` 时使用 |
+| `MODEL_BASE_URL` | 模型 API 基础地址，默认 `https://api.deepseek.com` |
 
 如果密码已配置在机器的环境变量中，无需创建 `.env`。本地开发也可复制 `.env.example` 为 `.env` 并填写密码；该文件已被 Git 忽略。两者同时存在时，环境变量优先。
+
+项目默认使用 [DeepSeek 官方 Chat Completions 接口](https://api-docs.deepseek.com/guides/search_fetch)：在运行后端的环境中设置 `MODEL_API_KEY` 或 `DEEPSEEK_API_KEY` 即可。若使用其他 DeepSeek 模型或兼容服务，再覆盖 `MODEL_NAME`、`MODEL_BASE_URL`。密钥不要提交到仓库。
 
 1. 启动 MySQL：
 
@@ -93,7 +96,7 @@ curl http://localhost:8080/api/tasks/1/messages
 mvn test
 ```
 
-当前接口测试使用 MockMvc 和模拟的服务，不需要启动 MySQL 或连接模型。应用实际启动仍需要 MySQL，以便执行 Flyway 迁移和校验表结构；使用对话功能还需配置模型环境变量。
+当前接口测试使用 MockMvc 和模拟的服务，不需要启动 MySQL 或连接模型。应用实际启动仍需要 MySQL，以便执行 Flyway 迁移和校验表结构；使用对话功能还需配置 `MODEL_API_KEY` 或 `DEEPSEEK_API_KEY`。
 
 前端可在 `frontend/` 中运行 `npm run build`，该命令会检查 TypeScript 并生成静态文件。部署静态文件时，需要将 `/api` 转发到后端，并将前端路由回退到 `index.html`。
 

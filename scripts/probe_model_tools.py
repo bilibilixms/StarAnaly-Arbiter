@@ -59,11 +59,13 @@ def complete(endpoint, api_key, model, messages, **options):
 
 
 def verify():
-    api_key = os.getenv("MODEL_API_KEY", "").strip()
-    model = os.getenv("MODEL_NAME", "").strip()
-    base_url = os.getenv("MODEL_BASE_URL", "https://api.openai.com/v1").strip().rstrip("/")
-    if not api_key or not model:
-        raise RuntimeError("请先在当前终端配置 MODEL_API_KEY 和 MODEL_NAME")
+    api_key = (os.getenv("MODEL_API_KEY") or os.getenv("DEEPSEEK_API_KEY") or "").strip()
+    model = os.getenv("MODEL_NAME", "deepseek-flash").strip()
+    base_url = os.getenv("MODEL_BASE_URL", "https://api.deepseek.com").strip().rstrip("/")
+    if not api_key:
+        raise RuntimeError("请先在当前终端配置 MODEL_API_KEY 或 DEEPSEEK_API_KEY")
+    if not model:
+        raise RuntimeError("MODEL_NAME 不能为空")
     try:
         parsed = urlsplit(base_url)
     except ValueError as error:
@@ -72,6 +74,8 @@ def verify():
             or parsed.password or parsed.query or parsed.fragment):
         raise RuntimeError("MODEL_BASE_URL 必须是完整的 HTTP(S) 基础地址")
     endpoint = base_url + "/chat/completions"
+    # DeepSeek 默认开启思考模式；指定工具的 tool_choice 需要非思考模式。
+    provider_options = {"thinking": {"type": "disabled"}} if model.startswith("deepseek-") else {}
 
     user_message = {"role": "user", "content": "Call sum_two_numbers with a=2 and b=3."}
     tool_request = complete(
@@ -81,6 +85,7 @@ def verify():
         [user_message],
         tools=[TOOL],
         tool_choice={"type": "function", "function": {"name": "sum_two_numbers"}},
+        **provider_options,
     )
     calls = tool_request.get("tool_calls")
     if not isinstance(calls, list) or not calls:
@@ -109,7 +114,15 @@ def verify():
     print(f"[通过] 模型返回 {len(calls)} 个有效工具调用")
 
     assistant_call = {"role": "assistant", "content": tool_request.get("content"), "tool_calls": safe_calls}
-    answer = complete(endpoint, api_key, model, [user_message, assistant_call, *tool_results])
+    answer = complete(
+        endpoint,
+        api_key,
+        model,
+        [user_message, assistant_call, *tool_results],
+        tools=[TOOL],
+        tool_choice="none",
+        **provider_options,
+    )
     if not isinstance(answer.get("content"), str) or not answer["content"].strip():
         raise RuntimeError("提交工具结果后，模型未返回文本回复")
     print("[通过] 工具结果回传后得到文本回复")

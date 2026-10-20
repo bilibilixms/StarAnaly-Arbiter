@@ -41,9 +41,13 @@ public class OpenAiCompatibleModelGateway implements ModelGateway {
 
     @Override
     public String complete(List<ModelMessage> messages) {
-        if (apiKey.isBlank() || model.isBlank()) {
+        if (apiKey.isBlank()) {
             throw new ModelServiceException(HttpStatus.SERVICE_UNAVAILABLE,
-                    "模型服务尚未配置 MODEL_API_KEY 和 MODEL_NAME。");
+                    "模型服务尚未配置 MODEL_API_KEY 或 DEEPSEEK_API_KEY。");
+        }
+        if (model.isBlank()) {
+            throw new ModelServiceException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "模型服务尚未配置 MODEL_NAME。");
         }
 
         String requestBody;

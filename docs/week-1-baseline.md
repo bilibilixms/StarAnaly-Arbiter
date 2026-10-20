@@ -1,6 +1,10 @@
 # 第 1 周：基线核对与执行方案
 
-> 状态：等待用户测试机验证 · 对应 [开发规划](development-plan.md) 第 1 周
+> 状态：基础项已验证，模型与浏览器流程待验证 · 对应 [开发规划](development-plan.md) 第 1 周
+
+## 已核对结果
+
+用户测试机的 [验证记录](../fox.md) 显示：Flyway V2 迁移、后端启动、任务创建与查询、11 个现有后端测试、前端 TypeScript 检查及构建均通过。因当时未配置模型密钥，对话接口按预期返回 `503`；真实模型回复、工具调用和浏览器操作仍未验证。现有 `TaskConversationStateTest` 覆盖上下文顺序和执行中拦截，尚未覆盖完整的成功/失败状态转换。
 
 ## 验证顺序
 
@@ -8,10 +12,10 @@
 
 1. 启动 MySQL、后端和前端，按 [README](../README.md#本地运行) 配置环境。后端成功启动表示 Flyway 已执行迁移，并通过 Hibernate 表结构校验。
 2. 在已配置模型环境变量的终端运行 `python3 scripts/verify_baseline.py`。如后端不在本机，使用 `--api-base-url http://主机:端口`。脚本核对任务创建、详情、分页列表、模型回复、消息持久化和最终状态。
-3. 在同一终端运行 `python3 scripts/probe_model_tools.py`。此脚本按 [Chat Completions 工具调用格式](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create) 访问 `MODEL_BASE_URL/chat/completions`，要求模型调用一个仅用于探测的加法函数，再将结果 `5` 回传。它不会真正执行函数，也不会改动数据库。脚本使用 `MODEL_NAME`、`MODEL_API_KEY` 和可选的 `MODEL_BASE_URL`。
+3. 在同一终端运行 `python3 scripts/probe_model_tools.py`。此脚本按 [DeepSeek 的工具调用格式](https://api-docs.deepseek.com/guides/tool_calls/) 访问 `MODEL_BASE_URL/chat/completions`，要求模型调用一个仅用于探测的加法函数，再将结果 `5` 回传。DeepSeek 默认开启思考模式，而指定工具调用在该模式下不可用，因此脚本会为 DeepSeek 请求关闭思考模式。脚本不执行函数，也不改动数据库；读取 `MODEL_API_KEY` 或 `DEEPSEEK_API_KEY`，默认模型为 `deepseek-flash`，默认地址为 `https://api.deepseek.com`。
 4. 在另一台机器按需运行 `mvn test` 和 `cd frontend && npm run build`；浏览器确认任务创建、详情、发送消息和刷新对话流程。
 
-若失败，请反馈**失败的步骤、HTTP 状态、脱敏后的错误信息**，以及模型供应商和模型名称；不要发送 API 密钥或数据库密码。工具调用探测失败时，先区分接口不支持、账号权限/额度问题、网络问题和模型返回格式问题，再决定第 3 周的适配方案。
+若失败，请反馈**失败的步骤、HTTP 状态、脱敏后的错误信息**，以及实际模型名称；不要发送 API 密钥或数据库密码。工具调用探测失败时，先区分接口不支持、账号权限/额度问题、网络问题和模型返回格式问题，再决定第 3 周的适配方案。
 
 ## 固定演示数据
 
