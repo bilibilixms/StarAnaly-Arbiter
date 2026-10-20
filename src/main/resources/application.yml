@@ -11,3 +11,9 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
+
+staranaly:
+  model:
+    base-url: ${MODEL_BASE_URL:https://api.openai.com/v1}
+    api-key: ${MODEL_API_KEY:}
+    name: ${MODEL_NAME:}

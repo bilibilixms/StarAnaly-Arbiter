@@ -1,5 +1,8 @@
 package com.staranaly.arbiter.task;
 
 public enum TaskStatus {
-    PENDING
+    PENDING,
+    RUNNING,
+    SUCCEEDED,
+    FAILED
 }

@@ -4,6 +4,14 @@ export interface Task {
   description: string | null
   status: string
   createdAt: string
+  lastError: string | null
+}
+
+export interface TaskMessage {
+  id: number
+  role: 'USER' | 'ASSISTANT'
+  content: string
+  createdAt: string
 }
 
 export interface TaskPage {
@@ -28,6 +36,14 @@ export class ApiError extends Error {
   }
 }
 
+const errorMessages: Record<number, string> = {
+  400: '提交的内容不符合要求，请检查后重试。',
+  404: '没有找到该任务。',
+  409: '任务正在执行，请等待当前回复完成。',
+  502: '模型服务调用失败，请稍后重试。',
+  503: '模型服务尚未配置，请检查后端环境变量。',
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   let response: Response
 
@@ -38,13 +54,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   }
 
   if (!response.ok) {
-    const message =
-      response.status === 400
-        ? '提交的内容不符合要求，请检查后重试。'
-        : response.status === 404
-          ? '没有找到该任务。'
-          : '请求失败，请稍后重试。'
-    throw new ApiError(response.status, message)
+    throw new ApiError(response.status, errorMessages[response.status] ?? '请求失败，请稍后重试。')
   }
 
   return (await response.json()) as T
@@ -63,5 +73,17 @@ export function createTask(input: CreateTaskInput): Promise<Task> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
+  })
+}
+
+export function listTaskMessages(taskId: number): Promise<TaskMessage[]> {
+  return request<TaskMessage[]>(`/tasks/${taskId}/messages`)
+}
+
+export function sendTaskMessage(taskId: number, content: string): Promise<TaskMessage> {
+  return request<TaskMessage>(`/tasks/${taskId}/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
   })
 }

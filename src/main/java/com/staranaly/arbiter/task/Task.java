@@ -33,6 +33,9 @@ public class Task {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
+    @Column(name = "last_error", length = 500)
+    private String lastError;
+
     protected Task() {
         // JPA requires a no-argument constructor.
     }
@@ -66,5 +69,24 @@ public class Task {
 
     public LocalDateTime getCreatedAt() {
         return createdAt;
+    }
+
+    public String getLastError() {
+        return lastError;
+    }
+
+    public void markRunning() {
+        this.status = TaskStatus.RUNNING;
+        this.lastError = null;
+    }
+
+    public void markSucceeded() {
+        this.status = TaskStatus.SUCCEEDED;
+        this.lastError = null;
+    }
+
+    public void markFailed(String reason) {
+        this.status = TaskStatus.FAILED;
+        this.lastError = reason;
     }
 }

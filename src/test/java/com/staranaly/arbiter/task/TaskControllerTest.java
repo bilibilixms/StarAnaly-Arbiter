@@ -34,7 +34,7 @@ class TaskControllerTest {
     @Test
     void createsTaskAndReturnsItsLocation() throws Exception {
         TaskResponse task = new TaskResponse(42L, "分析销售额", "按月汇总", TaskStatus.PENDING,
-                Instant.parse("2026-10-20T02:00:00Z"));
+                Instant.parse("2026-10-20T02:00:00Z"), null);
         when(service.create(any(CreateTaskRequest.class))).thenReturn(task);
 
         mvc.perform(post("/api/tasks")
@@ -64,7 +64,7 @@ class TaskControllerTest {
     @Test
     void returnsTaskById() throws Exception {
         TaskResponse task = new TaskResponse(42L, "分析销售额", null, TaskStatus.PENDING,
-                Instant.parse("2026-10-20T02:00:00Z"));
+                Instant.parse("2026-10-20T02:00:00Z"), null);
         when(service.findById(42L)).thenReturn(task);
 
         mvc.perform(get("/api/tasks/42"))
@@ -83,7 +83,7 @@ class TaskControllerTest {
     @Test
     void listsTasksWithPagination() throws Exception {
         TaskResponse task = new TaskResponse(42L, "分析销售额", null, TaskStatus.PENDING,
-                Instant.parse("2026-10-20T02:00:00Z"));
+                Instant.parse("2026-10-20T02:00:00Z"), null);
         when(service.findAll(any())).thenReturn(new PageImpl<>(List.of(task), PageRequest.of(0, 20), 1));
 
         mvc.perform(get("/api/tasks"))

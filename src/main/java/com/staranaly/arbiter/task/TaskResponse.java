@@ -8,7 +8,8 @@ public record TaskResponse(
         String title,
         String description,
         TaskStatus status,
-        Instant createdAt
+        Instant createdAt,
+        String lastError
 ) {
     public static TaskResponse from(Task task) {
         return new TaskResponse(
@@ -16,7 +17,8 @@ public record TaskResponse(
                 task.getTitle(),
                 task.getDescription(),
                 task.getStatus(),
-                task.getCreatedAt().toInstant(ZoneOffset.UTC)
+                task.getCreatedAt().toInstant(ZoneOffset.UTC),
+                task.getLastError()
         );
     }
 }
