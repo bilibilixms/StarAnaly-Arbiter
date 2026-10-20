@@ -23,6 +23,9 @@
 hs_err_pid*
 replay_pid*
 
+# Maven build output
+/target/
+
 # 环境变量文件（含密码等敏感配置，禁止提交）
 .env
 .env.local

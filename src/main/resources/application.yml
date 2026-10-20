@@ -1,0 +1,13 @@
+spring:
+  config:
+    import: "optional:file:./.env[.properties]"
+  datasource:
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3307}/${DB_NAME:staranaly}?serverTimezone=UTC
+    username: ${MYSQL_USER:staranaly}
+    password: ${MYSQL_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
