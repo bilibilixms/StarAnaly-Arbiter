@@ -13,20 +13,30 @@
 
 需要 Java 21、Maven 3.6.3 或更新版本，以及 Docker Compose。
 
-1. 复制 `.env.example` 为 `.env`，修改三个密码。`.env` 已被 Git 忽略。
-2. 启动 MySQL：
+运行前让 `docker compose` 和 Maven 进程能读取以下环境变量：
+
+| 变量 | 用途 |
+| --- | --- |
+| `MYSQL_ROOT_PASSWORD` | MySQL 初始化时的 root 密码 |
+| `MYSQL_PASSWORD` | 应用使用的 MySQL 账号密码 |
+| `MYSQL_USER` | 应用使用的 MySQL 用户，默认 `staranaly` |
+| `REDIS_PASSWORD` | 启动 Redis 时使用；只启动 MySQL 时暂不需要 |
+
+如果密码已配置在机器的环境变量中，无需创建 `.env`。本地开发也可复制 `.env.example` 为 `.env` 并填写密码；该文件已被 Git 忽略。两者同时存在时，环境变量优先。
+
+1. 启动 MySQL：
 
    ```bash
    docker compose up -d mysql
    ```
 
-3. 从仓库根目录启动应用。应用会读取当前目录的 `.env`：
+2. 等待 MySQL 健康检查通过，然后从仓库根目录启动应用：
 
    ```bash
    mvn spring-boot:run
    ```
 
-应用默认连接 `localhost:3307` 上的 `staranaly` 数据库，并使用 `.env` 中的 `MYSQL_USER`、`MYSQL_PASSWORD`。也可以通过环境变量提供这些配置。如果数据库不在本机，可以设置 `DB_HOST`、`DB_PORT` 和 `DB_NAME`。首次启动时 Flyway 会创建 `tasks` 表。
+应用默认连接 `localhost:3307` 上的 `staranaly` 数据库，并使用 `MYSQL_USER`、`MYSQL_PASSWORD`。如果数据库不在本机，可以设置 `DB_HOST`、`DB_PORT` 和 `DB_NAME`。首次启动时 Flyway 会创建 `tasks` 表。
 
 MySQL 官方镜像只在首次初始化数据目录时创建 `MYSQL_USER`。如果已有旧的 `mysql-data` 卷，需在现有数据库中手动创建该用户并授予 `staranaly` 数据库权限，或使用全新数据卷；不要删除仍需保留数据的卷。
 
