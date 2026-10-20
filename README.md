@@ -1,6 +1,6 @@
 # 星析 Agent · StarAnaly
 
-一个面向智能任务执行与数据分析的 AI Agent 项目。当前已实现任务 API 的第一步：创建任务、保存到 MySQL、按 ID 查询和分页列出任务。模型调用、工具调用、知识检索、数据分析和前端界面仍在规划中。
+一个面向智能任务执行与数据分析的 AI Agent 项目。当前已实现任务创建、MySQL 持久化与查询，以及对应的前端任务页面。模型调用、工具调用、知识检索和数据分析仍在规划中。
 
 ## 当前实现
 
@@ -8,10 +8,11 @@
 - MySQL 持久化；应用启动时由 Flyway 执行数据库迁移。
 - Docker Compose 提供 MySQL 和 Redis。当前任务 API 只使用 MySQL，Redis 尚未接入应用。
 - `POST /api/tasks`、`GET /api/tasks/{id}` 和 `GET /api/tasks`。
+- `frontend/` 中的 Vue 3 + TypeScript 工作台，可创建任务、查看分页列表和任务详情。
 
 ## 本地运行
 
-需要 Java 21、Maven 3.6.3 或更新版本，以及 Docker Compose。
+需要 Java 21、Maven 3.6.3 或更新版本、Docker Compose，以及用于前端的 Node.js 22.18.x 或 24.12 及以上版本。
 
 运行前让 `docker compose` 和 Maven 进程能读取以下环境变量：
 
@@ -35,6 +36,16 @@
    ```bash
    mvn spring-boot:run
    ```
+
+3. 在另一个终端启动前端：
+
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+
+浏览器打开 `http://localhost:5173`。前端开发服务器会将 `/api` 请求转发至 `http://localhost:8080`；如果后端位于其他地址，启动前端时可设置 `BACKEND_URL` 环境变量。前端无需读取数据库密码。
 
 应用默认连接 `localhost:3307` 上的 `staranaly` 数据库，并使用 `MYSQL_USER`、`MYSQL_PASSWORD`。如果数据库不在本机，可以设置 `DB_HOST`、`DB_PORT` 和 `DB_NAME`。首次启动时 Flyway 会创建 `tasks` 表。
 
@@ -69,10 +80,12 @@ mvn test
 
 当前接口测试使用 MockMvc 和模拟的服务，不需要启动 MySQL。应用实际启动仍需要 MySQL，以便执行 Flyway 迁移和校验表结构。
 
+前端可在 `frontend/` 中运行 `npm run build`，该命令会检查 TypeScript 并生成静态文件。部署静态文件时，需要将 `/api` 转发到后端，并将前端路由回退到 `index.html`。
+
 ## 后续规划
 
 1. 接入模型服务，让任务从 `PENDING` 进入实际执行流程，并保存执行结果。
 2. 增加工具调用、知识检索与数据分析能力。
-3. 建立 Vue 3 + TypeScript 工作空间界面。
+3. 扩展工作空间界面，展示任务执行过程与结果。
 
 本项目采用 [MIT License](LICENSE)。
