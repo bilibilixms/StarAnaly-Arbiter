@@ -619,3 +619,104 @@ exit=0
 - 验证结束时后端（8080）与前端（5173）均在运行，MySQL / Redis 容器保持运行。
 - 测试库保留任务 #11、执行 #9 的记录；资料 #1 已按脚本流程删除，因此引用随之为空。
 - 本轮未修改代码。
+
+---
+
+# 第 6 周验证报告（2026-10-21，代码 bac04c2）
+
+> 依据 [docs/week-6-frontend.md](docs/week-6-frontend.md)：前端工作台完整流程，真实浏览器联调。
+
+## 环境
+
+| 项 | 值 |
+| --- | --- |
+| 代码版本 | `bac04c2 完善前端任务工作台完整流程` |
+| 前端 | Vue 3 + Vite 8.3.4，`http://localhost:5173` |
+| 后端 | Spring Boot，`http://localhost:8080`，MySQL `healthy` |
+| 浏览器 | 真实浏览器（自动化验收） |
+| 样例 | `fixtures/monthly-sales.csv`、`fixtures/knowledge-demo.md` |
+
+## 1. 前端构建
+
+```bash
+cd frontend
+npm install   # 0 vulnerabilities
+npm run build # vue-tsc --noEmit && vite build
+```
+
+```
+✓ 32 modules transformed.
+dist/assets/index-CRxHO6Vm.js   92.34 kB │ gzip: 35.97 kB
+dist/assets/TaskDetailView-*.js 14.51 kB │ gzip:  5.41 kB
+✓ built in 200ms
+```
+
+类型检查与构建均通过。
+
+## 2. 浏览器验收
+
+### 2.1 CSV 上传与汇总（任务 #12）
+
+- 任务列表 → 「新建任务」→ 标题 `前端验收-CSV` → 提交 → 跳转 `/tasks/12`
+- CSV 区域上传 `monthly-sales.csv`：页面显示 **4 行、字段 `date/category/amount`、87 B**
+- 点击「预览」：显示前 4 行原始数据
+- 输入「请调用 summarize_csv，按 date 月份汇总 amount，给出每月金额与总计。」→「开始执行」
+- 页面每 2 秒自动刷新，执行结束状态 `SUCCEEDED`
+
+执行 #11 步骤（后端核对）：
+
+| stepNumber | kind | toolName | status | outputSummary |
+| --- | --- | --- | --- | --- |
+| 1 | MODEL_CALL | - | SUCCEEDED | 模型请求 1 个工具 |
+| 2 | TOOL_CALL | summarize_csv | SUCCEEDED | 参数校验通过 |
+| 3 | TOOL_RESULT | summarize_csv | SUCCEEDED | 得到 2 组，总计 500 |
+| 4 | MODEL_CALL | - | SUCCEEDED | 模型返回 237 字符 |
+| 5 | FINAL_ANSWER | - | SUCCEEDED | 回复已保存 |
+
+结构化分析结果：`matchedRows=4`、`total=500`、`2026-01=300`、`2026-02=200`，页面展示与之一致。模型回答以表格给出同样的 300 / 200 / 500。
+
+### 2.2 资料上传、检索与引用（任务 #13）
+
+- 新建 `前端验收-资料` → `/tasks/13`
+- 资料区域上传 `knowledge-demo.md`：显示 **3 个片段、240 B**，提示「已上传资料：knowledge-demo.md」
+- 提问「请先检索资料，再回答普通订单何时可以申请退货，并注明资料名和行号。」→ 执行 `SUCCEEDED`
+
+执行 #12 步骤：
+
+| stepNumber | kind | toolName | status | outputSummary |
+| --- | --- | --- | --- | --- |
+| 1 | MODEL_CALL | - | SUCCEEDED | 模型请求 1 个工具 |
+| 2 | TOOL_CALL | search_knowledge | SUCCEEDED | 参数校验通过 |
+| 3 | TOOL_RESULT | search_knowledge | SUCCEEDED | 命中 2 个片段 |
+| 4 | MODEL_CALL | - | SUCCEEDED | 模型返回 133 字符 |
+| 5 | FINAL_ANSWER | - | SUCCEEDED | 回复已保存 |
+
+页面回答：
+
+> 根据资料 **knowledge-demo.md** 第 3 行：演示商店的普通订单，自签收日起 14 天内可以申请退货……
+
+「资料来源」区域显示 `knowledge-demo.md` 与第 3 行。
+
+### 2.3 删除资料后
+
+- 点击「删除」→ 浏览器确认框 → 接受
+- 资料列表为空（「暂无资料」）
+- 结构化引用区域显示「本次执行暂无可查看的来源。删除资料后，其引用会清空。」
+- 历史文字回答仍保留在对话区域
+
+后端核对：`GET /tasks/13/documents` 返回 `[]`，`GET /tasks/13/runs/12/citations` 返回 `[]`。
+
+## 3. 未执行项
+
+验收清单第 5 条为「可选：断开后端后刷新页面，核对错误提示和重试按钮」。本轮未断开后端，因此该错误态与重试入口未实测；页面已存在重试按钮与错误提示的实现（`loadWorkspace` / `role="alert"`），但未验证其运行时表现。
+
+## 第 6 周结论
+
+`docs/week-6-frontend.md` 的 1～4 项在真实浏览器中全部通过：CSV 上传显示 4 行 / 3 字段 / 预览 4 行，异步执行后页面展示工具步骤与结构化结果（300 / 200 / 500）；资料上传显示 3 片段，提问后回答含「14 天」且引用定位到 `knowledge-demo.md` 第 3 行；删除资料后资料列表与结构化引用均清空，历史文字回答保留。前端 `npm install` + `npm run build` 通过。
+
+## 环境备注
+
+- 验证结束时后端 8080、前端 5173 仍在运行；MySQL / Redis 容器保持运行。
+- 测试库新增任务 #12（执行 #11、分析结果 #2）与任务 #13（执行 #12），资料已按验收流程删除。
+- 本轮未修改代码。
+- 验收过程中首次上传 markdown 时误把 File 赋给了 CSV 的 input，页面按契约提示「请选择非空且不超过5MiB的CSV文件」，这说明前端文件类型校验生效；改用资料 input 后上传成功。
