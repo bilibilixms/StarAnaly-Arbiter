@@ -204,3 +204,103 @@ DeepSeek 对 `tool_choice` + `tools` 格式的响应、以及回传工具结果�
 后端基础能力（任务 CRUD + 分页）、Flyway V1 + V2 迁移、Hibernate DDL 校验、对话路由 503 语义、状态机、前端 TypeScript 与 Vite 构建均符合 README 与第 1 周基线文档的契约。唯一未验证路径为「已配模型的对话调用」，这需要模型供应商账号。
 
 **本轮追加结论（d494299）**：配置 `DEEPSEEK_API_KEY` 后，`POST /tasks/{id}/messages` 成功拿到模型回复，任务状态正确转移为 `SUCCEEDED`，对话消息持久化；`probe_model_tools.py` 通过工具调用往返探测。默认接入 DeepSeek 的改动闭环完成。
+
+---
+
+# 第 2 周验证报告（2026-10-21，代码 c32ec07）
+
+> 依据 [docs/week-2-execution.md](docs/week-2-execution.md)：异步执行记录 + 步骤持久化。
+
+## 环境
+
+| 项 | 值 |
+| --- | --- |
+| 代码版本 | `c32ec07 新增任务执行记录与异步查询接口` |
+| 数据库 | MySQL 8.0，容器 `staranaly-mysql`，`healthy`，端口 3307 |
+| 模型 | DeepSeek（`DEEPSEEK_API_KEY` 由本地 `.env` 注入，未入库） |
+| 应用 | `mvn -B spring-boot:run`，Tomcat 8080，启动 4.0s |
+
+启动前 Docker 引擎未运行，先拉起 Docker Desktop，等 `docker info` 可用后容器自动恢复为 healthy。
+
+## 1. Flyway V3 迁移
+
+```
+Migrating schema `staranaly` to version "3 - task runs"
+Successfully applied 1 migration to schema `staranaly`, now at version v3 (execution time 00:00.086s)
+```
+
+`task_runs`、`task_run_steps` 两张表创建成功，启动后 `Tomcat started on port 8080`、`Started StarAnalyApplication`。
+
+## 2. `mvn test`
+
+```
+Tests run: 5, Failures: 0, Errors: 0 -- TaskControllerTest
+Tests run: 3, Failures: 0, Errors: 0 -- TaskRunControllerTest
+Tests run: 4, Failures: 0, Errors: 0 -- TaskConversationControllerTest
+Tests run: 2, Failures: 0, Errors: 0 -- TaskConversationServiceTest
+Tests run: 4, Failures: 0, Errors: 0 -- TaskConversationStateTest
+Tests run: 18, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+```
+
+共 18 项，含新增的 3 项 `TaskRunControllerTest`。
+
+## 3. `scripts/verify_runs.py`
+
+```bash
+cd scripts && python3 verify_runs.py
+```
+
+```
+[通过] 创建任务 #4 与执行 #1
+[通过] 执行状态转为 SUCCEEDED
+[通过] 模型调用与最终回复步骤已保存
+[通过] 执行列表、任务状态与对话记录一致
+exit=0
+```
+
+覆盖：`202` 创建、轮询至 `SUCCEEDED`、`finishedAt` 非空、步骤 `[MODEL_CALL, FINAL_ANSWER]` 顺序与状态、执行列表可检索、任务状态与对话记录同步。
+
+## 4. 旧同步接口 + 并发 409
+
+新建任务 #5，依次验证：
+
+| 场景 | 请求 | 结果 |
+| --- | --- | --- |
+| 同步对话 | `POST /api/tasks/5/messages` | `200`，`role=ASSISTANT`，内容「同步接口正常。」 |
+| 并发第 1 次 | `POST /api/tasks/5/runs` | `202`，`{"id":3,"taskId":5,"status":"RUNNING",...}` |
+| 并发第 2 次 | 同上（间隔 0.2s） | `409 Conflict`，`path=/api/tasks/5/runs` |
+| 空白内容 | `POST /api/tasks/5/runs`，`content="   "` | `400` |
+| 任务不存在 | `POST /api/tasks/99999/runs` | `404` |
+
+异步执行 #3 完成后详情与步骤：
+
+```json
+{
+  "id": 3, "taskId": 5, "status": "SUCCEEDED",
+  "requestSummary": "用户消息，27 字符", "lastError": null,
+  "startedAt": "2026-10-21T01:35:11.005128Z",
+  "finishedAt": "2026-10-21T01:35:16.340713Z"
+}
+```
+
+| stepNumber | kind | status | inputSummary | outputSummary |
+| --- | --- | --- | --- | --- |
+| 1 | MODEL_CALL | SUCCEEDED | 请求模型生成回复 | 模型返回 468 字符 |
+| 2 | FINAL_ANSWER | SUCCEEDED | 保存最终回复 | 回复已保存 |
+
+执行列表 `GET /api/tasks/5/runs?page=0&size=20` 返回 2 条（#3 本轮异步、#2 同步接口产生的记录），均 `SUCCEEDED`，按编号降序。
+
+## 未覆盖项
+
+- **重启恢复**：文档描述「重启时遗留 RUNNING 记录转为 FAILED」，本轮未构造该场景，未验证。
+- **步骤详情中的工具字段**：第 2 周仅 `MODEL_CALL`/`FINAL_ANSWER`，`toolName` 均为 null，符合本阶段范围；工具步骤留待第 3 周。
+
+## 第 2 周结论
+
+`docs/week-2-execution.md` 列出的验收项全部通过：V3 迁移成功、18 项测试全绿、`verify_runs.py` 四项断言通过、同步接口未回归、同一任务并发提交返回 `409`、无效内容 `400`、任务不存在 `404`。异步执行记录与步骤持久化符合 API 契约。
+
+## 环境备注
+
+- 验证结束已停止应用（8080 释放），MySQL / Redis 容器保持运行，数据保留。
+- 本轮未提交代码改动，仅追加本报告。
