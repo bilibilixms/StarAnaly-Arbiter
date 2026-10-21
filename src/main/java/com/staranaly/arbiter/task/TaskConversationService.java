@@ -87,7 +87,7 @@ public class TaskConversationService {
         int stepNumber = 1;
         int toolCount = 0;
         for (int round = 1; round <= MAX_MODEL_ROUNDS; round++) {
-            boolean allowTools = round < MAX_MODEL_ROUNDS && toolCount < MAX_TOOL_CALLS;
+            boolean allowTools = round == 1;
             ModelReply reply = modelGateway.next(messages, allowTools, remaining(deadline));
             remaining(deadline);
             if (reply.toolCalls().isEmpty()) {

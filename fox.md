@@ -304,3 +304,115 @@ exit=0
 
 - 验证结束已停止应用（8080 释放），MySQL / Redis 容器保持运行，数据保留。
 - 本轮未提交代码改动，仅追加本报告。
+
+---
+
+# 第 3 周验证报告（2026-10-21，代码 dba7efa）
+
+> 依据 [docs/week-3-tool-loop.md](docs/week-3-tool-loop.md)：只读工具调用闭环。
+
+## 环境
+
+| 项 | 值 |
+| --- | --- |
+| 代码版本 | `dba7efa 接入只读工具调用并记录执行步骤` |
+| 数据库 | MySQL 8.0，容器 `staranaly-mysql`，`healthy` |
+| 迁移 | 无新增：`Schema staranaly is up to date. No migration necessary.`（V3 已含工具字段） |
+| 应用 | 启动 3.5s，Tomcat 8080 |
+
+## 1. `mvn test`（发现并修复 1 项失败）
+
+首次运行 24 项测试，1 项失败：
+
+```
+TaskConversationServiceTest.recordsToolRequestResultAndFinalReply:87
+```
+
+失败原因：测试第 87 行断言工具执行后的第二次模型请求 `allowTools=false`，而实现中 `allowTools = round < MAX_MODEL_ROUNDS && toolCount < MAX_TOOL_CALLS` 在 round=2、toolCount=1 时为 `true`，同一断言匹配到 2 次调用。
+
+判断依据：文档的步骤序列为 `MODEL_CALL → TOOL_CALL → TOOL_RESULT → MODEL_CALL → FINAL_ANSWER`，且测试断言明确要求工具结果回传后不再放行新工具，因此以测试与文档为准调整实现：
+
+```java
+// TaskConversationService.java:90
+- boolean allowTools = round < MAX_MODEL_ROUNDS && toolCount < MAX_TOOL_CALLS;
++ boolean allowTools = round == 1;
+```
+
+修改后重跑：
+
+```
+Tests run: 24, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+```
+
+分布：`TaskStartupRecoveryTest` 1、`ReadOnlyToolRegistryTest` 2、`TaskControllerTest` 5、`TaskRunControllerTest` 3、`TaskConversationControllerTest` 4、`TaskConversationServiceTest` 5、`TaskConversationStateTest` 4。
+
+## 2. `scripts/verify_tool_loop.py`
+
+```bash
+cd scripts && python3 verify_tool_loop.py
+```
+
+```
+[通过] 创建任务 #6 与执行 #4
+[通过] 模型调用、工具请求、工具结果及最终回答步骤已保存
+[通过] 工具结果已回传模型并形成最终回答
+exit=0
+```
+
+执行 #4 步骤（`GET /api/tasks/6/runs/4/steps`）：
+
+| stepNumber | kind | toolName | status | inputSummary | outputSummary |
+| --- | --- | --- | --- | --- | --- |
+| 1 | MODEL_CALL | - | SUCCEEDED | 请求模型生成回复 | 模型请求 1 个工具 |
+| 2 | TOOL_CALL | sum_two_numbers | SUCCEEDED | 模型请求工具 sum_two_numbers | 参数校验通过 |
+| 3 | TOOL_RESULT | sum_two_numbers | SUCCEEDED | 整数加法：a=2，b=3 | 计算结果：5 |
+| 4 | MODEL_CALL | - | SUCCEEDED | 提交工具结果并请求模型回复 | 模型返回 37 字符 |
+| 5 | FINAL_ANSWER | - | SUCCEEDED | 保存最终回复 | 回复已保存 |
+
+执行详情：`SUCCEEDED`，耗时约 1.9 秒。最终回复：「已调用 sum_two_numbers 计算 a=2、b=3，结果为 5。」
+
+## 3. 旧接口回归
+
+| 脚本 | 结果 |
+| --- | --- |
+| `python3 scripts/verify_runs.py` | 4 项全部通过（任务 #7 / 执行 #5），exit=0 |
+| `python3 scripts/verify_baseline.py` | 3 项全部通过（任务 #8），exit=0 |
+
+两个脚本需 shell 环境变量（不读 `.env`），运行时用 `set -a; . .env; set +a` 注入。
+
+## 4. 服务重启恢复实测
+
+在本地测试库构造遗留执行：
+
+1. `POST /api/tasks` 创建任务 #9（PENDING）。
+2. SQL 直接写入 `task_runs`（`RUNNING`）与 `task_run_steps`（`MODEL_CALL`/`RUNNING`），并把 `tasks.status` 置为 `RUNNING`。
+3. 确认构造后 API 返回：任务 `RUNNING`、执行 #7 `RUNNING`。
+4. 停止并重启应用。
+
+重启后结果：
+
+| 对象 | 状态 | 结束时间 | lastError |
+| --- | --- | --- | --- |
+| 任务 #9 | `FAILED` | - | 服务重启，任务执行中断。请重新发送消息。 |
+| 执行 #7 | `FAILED` | 2026-10-21T02:23:12.123308Z | 服务重启，任务执行中断。请重新发送消息。 |
+| 步骤 #1 | `FAILED` | 2026-10-21T02:23:12.123217Z | - |
+
+重启日志：`Schema staranaly is up to date. No migration necessary.`、`Started StarAnalyApplication in 3.451 seconds`。第 2 周报告中未覆盖的重启恢复场景本轮已实测通过。
+
+## 本轮代码改动
+
+| 文件 | 改动 |
+| --- | --- |
+| [TaskConversationService.java](src/main/java/com/staranaly/arbiter/task/TaskConversationService.java#L90) | `allowTools` 改为仅在首轮放行，修复新增测试与实现不一致 |
+
+除该 1 行外无其他代码改动；测试文件未修改。
+
+## 第 3 周结论
+
+`docs/week-3-tool-loop.md` 的验收项全部通过：24 项测试全绿、`verify_tool_loop.py` 三阶段断言通过且步骤完整记录 `MODEL_CALL → TOOL_CALL → TOOL_RESULT → MODEL_CALL → FINAL_ANSWER`、两个旧脚本回归通过、重启后遗留执行/步骤/任务均正确转为 `FAILED`。附带修复了 `allowTools` 与测试契约不一致的问题。
+
+## 环境备注
+
+- 验证结束已停止应用（8080 释放），MySQL / Redis 容器保持运行。
+- 测试库保留了任务 #6 ~ #9 的验证数据，均为本地开发数据。
