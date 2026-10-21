@@ -522,3 +522,100 @@ exit=0
 - 验证结束已停止应用（8080 释放），MySQL / Redis 容器保持运行。
 - 测试库保留任务 #10 及其文件 #1、执行 #8、分析结果 #1，均为本地开发数据。
 - 本轮未修改代码。
+
+---
+
+# 第 5 周验证报告（2026-10-21，代码 c908b07）
+
+> 依据 [docs/week-5-knowledge.md](docs/week-5-knowledge.md)：资料检索与来源引用。
+
+## 环境
+
+| 项 | 值 |
+| --- | --- |
+| 代码版本 | `c908b07 新增资料检索与来源引用能力` |
+| 数据库 | MySQL 8.0，容器 `staranaly-mysql`，`healthy` |
+| 迁移 | V5 首次执行成功 |
+| 应用 | 启动 4.2s，Tomcat 8080 |
+| 前端 | Vite 8.3.4，`http://localhost:5173`，代理 `/api` → 8080 |
+| 样例 | `fixtures/knowledge-demo.md` |
+
+V5 迁移日志：
+
+```
+Successfully applied 1 migration to schema `staranaly`, now at version v5 (execution time 00:00.155s)
+```
+
+## 1. `mvn test`
+
+```
+Tests run: 35, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+```
+
+测试类明细：
+
+| 测试类 | 数量 |
+| --- | --- |
+| KnowledgeTextProcessorTest | 2 |
+| TaskStartupRecoveryTest | 1 |
+| ReadOnlyToolRegistryTest | 5 |
+| TaskControllerTest | 5 |
+| TaskRunControllerTest | 3 |
+| TaskConversationControllerTest | 4 |
+| TaskConversationServiceTest | 5 |
+| TaskConversationStateTest | 5 |
+| CsvFileControllerTest | 1 |
+| CsvParserTest | 2 |
+| CsvAnalyzerTest | 2 |
+
+本周新增知识检索相关测试（`KnowledgeTextProcessorTest` 2 项，`ReadOnlyToolRegistryTest` 由 3 项增至 5 项，`TaskConversationStateTest` 由 4 项增至 5 项），全部通过。
+
+## 2. `scripts/verify_knowledge.py`
+
+```bash
+cd scripts && python3 verify_knowledge.py
+```
+
+```
+[通过] 上传并列出资料 #1
+[通过] 检索命中原文第 3 行，且无关问题无命中
+[通过] 模型调用检索工具，回答与结构化来源引用均已保存
+[通过] 删除资料后检索与引用均已清理
+exit=0
+```
+
+任务 #11，资料 #1 `knowledge-demo.md`，执行 #9 步骤：
+
+| stepNumber | kind | toolName | status | inputSummary | outputSummary |
+| --- | --- | --- | --- | --- | --- |
+| 1 | MODEL_CALL | - | SUCCEEDED | 请求模型生成回复 | 模型请求 1 个工具 |
+| 2 | TOOL_CALL | search_knowledge | SUCCEEDED | 模型请求工具 search_knowledge | 参数校验通过 |
+| 3 | TOOL_RESULT | search_knowledge | SUCCEEDED | 资料检索：普通订单退货期限 | 命中 2 个片段 |
+| 4 | MODEL_CALL | - | SUCCEEDED | 提交工具结果并请求模型回复 | 模型返回 140 字符 |
+| 5 | FINAL_ANSWER | - | SUCCEEDED | 保存最终回复 | 回复已保存 |
+
+最终回复：
+
+> 根据检索到的一处明确命中：
+>
+> **普通订单的退货期限：自签收日起 14 天内可以申请退货。**
+>
+> - 依据资料：`knowledge-demo.md`，第 3 行
+> - 第 3 行还注明：超过 14 天的申请需要人工审核。
+
+删除资料后复查：`GET /documents` 返回 `[]`，`GET /runs/9/citations` 返回 `[]`，检索无命中，级联清理生效。
+
+## 3. 边界说明
+
+脚本覆盖了文案要求的核心链路（上传、列表、命中行号、无关问题空命中、模型工具调用、结构化引用、删除后清理）。上传大小、编码、NUL 字符、分段上限、`limit` 越界等错误分支由 `KnowledgeTextProcessorTest` 与控制器测试覆盖，本轮未额外手工构造。
+
+## 第 5 周结论
+
+`docs/week-5-knowledge.md` 的验收项全部通过：V5 迁移成功、35 项测试全绿、检索命中原文第 3 行且无关问题无命中、模型成功调用 `search_knowledge` 并按资料名称与行号标注出处、结构化引用落库、删除资料后检索与引用均清空。
+
+## 环境备注
+
+- 验证结束时后端（8080）与前端（5173）均在运行，MySQL / Redis 容器保持运行。
+- 测试库保留任务 #11、执行 #9 的记录；资料 #1 已按脚本流程删除，因此引用随之为空。
+- 本轮未修改代码。
