@@ -4,6 +4,8 @@ import java.util.List;
 import java.util.Optional;
 
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -12,6 +14,14 @@ import org.springframework.data.repository.query.Param;
 public interface TaskRepository extends JpaRepository<Task, Long> {
 
     List<Task> findByStatus(TaskStatus status);
+
+    Page<Task> findByStatus(TaskStatus status, Pageable pageable);
+
+    @Query("select task.id as id, task.title as title from Task task")
+    List<TaskSearchCandidate> findSearchCandidates();
+
+    @Query("select task.id as id, task.title as title from Task task where task.status = :status")
+    List<TaskSearchCandidate> findSearchCandidatesByStatus(@Param("status") TaskStatus status);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select task from Task task where task.id = :id")

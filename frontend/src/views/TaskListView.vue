@@ -1,25 +1,69 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { listTasks, type TaskPage } from '@/api/tasks'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { listTasks, type TaskPage, type TaskStatus } from '@/api/tasks'
 import { formatCreatedAt, statusLabel } from '@/task/format'
 
+const statuses: Array<{ value: TaskStatus | ''; label: string }> = [
+  { value: '', label: '全部' },
+  { value: 'PENDING', label: '等待处理' },
+  { value: 'RUNNING', label: '执行中' },
+  { value: 'SUCCEEDED', label: '已完成' },
+  { value: 'FAILED', label: '执行失败' },
+]
 const page = ref(0)
+const status = ref<TaskStatus | ''>('')
+const searchInput = ref('')
+const query = ref('')
 const result = ref<TaskPage | null>(null)
 const loading = ref(false)
 const error = ref('')
+let requestVersion = 0
+let searchTimer: ReturnType<typeof setTimeout> | undefined
 
 async function loadTasks() {
+  const version = ++requestVersion
   loading.value = true
   error.value = ''
   result.value = null
 
   try {
-    result.value = await listTasks(page.value)
+    const response = await listTasks(page.value, status.value || undefined, query.value)
+    if (version === requestVersion) result.value = response
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '加载任务失败。'
+    if (version === requestVersion) error.value = cause instanceof Error ? cause.message : '加载任务失败。'
   } finally {
-    loading.value = false
+    if (version === requestVersion) loading.value = false
   }
+}
+
+function applySearch() {
+  if (searchTimer !== undefined) clearTimeout(searchTimer)
+  searchTimer = undefined
+  const next = searchInput.value.trim()
+  if (next === query.value) return
+  query.value = next
+  page.value = 0
+  void loadTasks()
+}
+
+function selectStatus(next: TaskStatus | '') {
+  if (status.value === next) return
+  status.value = next
+  query.value = searchInput.value.trim()
+  if (searchTimer !== undefined) clearTimeout(searchTimer)
+  searchTimer = undefined
+  page.value = 0
+  void loadTasks()
+}
+
+function clearFilters() {
+  searchInput.value = ''
+  query.value = ''
+  status.value = ''
+  page.value = 0
+  if (searchTimer !== undefined) clearTimeout(searchTimer)
+  searchTimer = undefined
+  void loadTasks()
 }
 
 function changePage(nextPage: number) {
@@ -28,8 +72,18 @@ function changePage(nextPage: number) {
   void loadTasks()
 }
 
+watch(searchInput, () => {
+  if (searchTimer !== undefined) clearTimeout(searchTimer)
+  searchTimer = setTimeout(applySearch, 300)
+})
+
 onMounted(() => {
   void loadTasks()
+})
+
+onUnmounted(() => {
+  requestVersion++
+  if (searchTimer !== undefined) clearTimeout(searchTimer)
 })
 </script>
 
@@ -38,21 +92,43 @@ onMounted(() => {
     <div>
       <p class="eyebrow">工作空间 / 任务</p>
       <h1>任务列表</h1>
-      <p class="page-description">查看已创建的任务及其当前状态。</p>
+      <p class="page-description">按状态浏览任务，或输入任务名查找；同名任务会分别列出。</p>
     </div>
     <RouterLink class="button" to="/tasks/new">新建任务</RouterLink>
   </section>
 
   <section class="panel" aria-label="任务列表">
+    <div class="task-filters">
+      <div class="task-filters__statuses" role="group" aria-label="按状态筛选任务">
+        <button v-for="option in statuses" :key="option.value" type="button" class="task-filters__status"
+          :class="{ 'task-filters__status--active': status === option.value }"
+          :aria-pressed="status === option.value" @click="selectStatus(option.value)">
+          {{ option.label }}
+        </button>
+      </div>
+      <form class="task-filters__search" role="search" @submit.prevent="applySearch">
+        <label for="task-title-search">查找任务</label>
+        <input id="task-title-search" v-model="searchInput" type="search" maxlength="200"
+          placeholder="输入任务名称，支持部分名称或少量错别字" />
+        <button class="button button--secondary button--small" type="submit">搜索</button>
+      </form>
+    </div>
     <div v-if="loading" class="message" role="status">正在加载任务…</div>
     <div v-else-if="error" class="message message--error" role="alert">
       <p>{{ error }}</p>
       <button class="button button--secondary" type="button" @click="loadTasks">重试</button>
     </div>
     <div v-else-if="result && result.content.length === 0" class="message message--empty">
-      <h2>还没有任务</h2>
-      <p>创建一个任务，开始记录你的工作。</p>
-      <RouterLink class="button" to="/tasks/new">创建任务</RouterLink>
+      <template v-if="status || query">
+        <h2>没有找到匹配的任务</h2>
+        <p>试试缩短任务名，或切换任务状态。</p>
+        <button class="button button--secondary" type="button" @click="clearFilters">清除筛选</button>
+      </template>
+      <template v-else>
+        <h2>还没有任务</h2>
+        <p>创建一个任务，开始记录你的工作。</p>
+        <RouterLink class="button" to="/tasks/new">创建任务</RouterLink>
+      </template>
     </div>
     <template v-else-if="result">
       <div class="table-wrap">

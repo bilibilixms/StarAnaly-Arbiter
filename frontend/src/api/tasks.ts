@@ -7,6 +7,8 @@ export interface Task {
   lastError: string | null
 }
 
+export type TaskStatus = 'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED'
+
 export interface TaskMessage {
   id: number
   role: 'USER' | 'ASSISTANT'
@@ -149,8 +151,11 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return (await response.json()) as T
 }
 
-export function listTasks(page = 0): Promise<TaskPage> {
-  return request<TaskPage>(`/tasks?page=${page}&size=20`)
+export function listTasks(page = 0, status?: TaskStatus, query = ''): Promise<TaskPage> {
+  const params = new URLSearchParams({ page: String(page), size: '20' })
+  if (status) params.set('status', status)
+  if (query) params.set('query', query)
+  return request<TaskPage>(`/tasks?${params.toString()}`)
 }
 
 export function getTask(id: number): Promise<Task> {
