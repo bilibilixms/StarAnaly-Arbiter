@@ -7,6 +7,6 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 public class CsvFileNotFoundException extends RuntimeException {
 
     public CsvFileNotFoundException(Long taskId, Long fileId) {
-        super("CSV file " + fileId + " was not found for task " + taskId);
+        super("Table file " + fileId + " was not found for task " + taskId);
     }
 }

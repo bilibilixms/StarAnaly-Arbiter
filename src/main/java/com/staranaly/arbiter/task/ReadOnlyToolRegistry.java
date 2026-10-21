@@ -76,7 +76,7 @@ public class ReadOnlyToolRegistry {
                 || (arguments.size() == 6 && (!validColumn(arguments.path("filterColumn"))
                         || !arguments.path("filterValue").isTextual()
                         || arguments.path("filterValue").asText().length() > 200))) {
-            throw new ModelServiceException(HttpStatus.BAD_GATEWAY, "模型 CSV 工具参数无效。");
+            throw new ModelServiceException(HttpStatus.BAD_GATEWAY, "模型表格工具参数无效。");
         }
         Long fileId = arguments.path("fileId").longValue();
         String groupBy = arguments.path("groupBy").asText();
@@ -89,20 +89,20 @@ public class ReadOnlyToolRegistry {
             result = csvFiles.aggregate(taskId, fileId, groupBy, sumColumn,
                     byMonth, filterColumn, filterValue);
         } catch (CsvInputException | CsvFileNotFoundException exception) {
-            throw new ModelServiceException(HttpStatus.BAD_GATEWAY, "模型 CSV 工具参数无效或文件不可用。");
+            throw new ModelServiceException(HttpStatus.BAD_GATEWAY, "模型表格工具参数无效或文件不可用。");
         }
         String content;
         try {
             content = objectMapper.writeValueAsString(result);
         } catch (com.fasterxml.jackson.core.JsonProcessingException exception) {
-            throw new ModelServiceException(HttpStatus.BAD_GATEWAY, "无法编码 CSV 分析结果。");
+            throw new ModelServiceException(HttpStatus.BAD_GATEWAY, "无法编码表格分析结果。");
         }
         if (content.length() > 10_000) {
-            throw new ModelServiceException(HttpStatus.BAD_GATEWAY, "CSV 分析结果超过模型输入限制。");
+            throw new ModelServiceException(HttpStatus.BAD_GATEWAY, "表格分析结果超过模型输入限制。");
         }
         csvFiles.saveAnalysis(runId, fileId, result);
         return new ToolResult(content,
-                "CSV 文件 " + fileId + "：按 " + groupBy + " 汇总 " + sumColumn,
+                "表格文件 " + fileId + "：按 " + groupBy + " 汇总 " + sumColumn,
                 "得到 " + result.groups().size() + " 组，总计 " + result.total().toPlainString());
     }
 

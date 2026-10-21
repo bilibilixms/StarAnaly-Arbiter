@@ -79,7 +79,7 @@ public class CsvAnalyzer {
     private static int columnIndex(CsvData data, String column) {
         int index = column == null ? -1 : data.headers().indexOf(column);
         if (index < 0) {
-            throw new CsvInputException("CSV 列不存在：" + column);
+            throw new CsvInputException("表格列不存在：" + column);
         }
         return index;
     }

@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router'
 import {
   deleteKnowledgeDocument, getCsvPreview, getTask, listCsvFiles, listKnowledgeDocuments,
   listRunAnalyses, listRunCitations, listRunSteps, listTaskMessages, listTaskRuns,
-  startTaskRun, uploadCsvFile, uploadKnowledgeDocument,
+  startTaskRun, uploadTableFile, uploadKnowledgeDocument,
   type CsvAnalysis, type CsvFile, type CsvPreview, type KnowledgeCitation,
   type KnowledgeDocument, type Task, type TaskMessage, type TaskRun, type TaskRunStep,
 } from '@/api/tasks'
@@ -26,7 +26,7 @@ const draft = ref('')
 const loading = ref(false)
 const refreshing = ref(false)
 const starting = ref(false)
-const csvBusy = ref(false)
+const uploadBusy = ref(false)
 const documentBusy = ref(false)
 const previewLoading = ref(false)
 const loadError = ref('')
@@ -145,7 +145,7 @@ async function loadWorkspace() {
 
 async function submitMessage() {
   const id = taskId()
-  if (id === null || starting.value || isRunning.value) return
+  if (id === null || starting.value || uploadBusy.value || documentBusy.value || isRunning.value) return
   const content = draft.value.trim()
   sendError.value = ''
   notice.value = ''
@@ -171,59 +171,43 @@ async function submitMessage() {
   }
 }
 
-async function uploadCsv(event: Event) {
+async function uploadFile(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   const id = taskId()
   input.value = ''
-  if (!file || id === null || csvBusy.value || isRunning.value) return
+  if (!file || id === null || starting.value || uploadBusy.value || documentBusy.value || isRunning.value) return
   uploadError.value = ''
   notice.value = ''
-  if (!file.name.toLowerCase().endsWith('.csv') || file.size === 0 || file.size > 5 * 1024 * 1024) {
-    uploadError.value = '请选择非空且不超过 5 MiB 的 CSV 文件。'
+  const isTable = /\.(csv|xls|xlsx)$/i.test(file.name)
+  const isText = /\.(txt|md|markdown)$/i.test(file.name)
+  const isDocument = /\.(pdf|doc|docx)$/i.test(file.name)
+  if (!isTable && !isText && !isDocument) {
+    uploadError.value = '支持 CSV、Excel、TXT、Markdown、PDF 和 Word 文件。'
     return
   }
-  csvBusy.value = true
-  try {
-    await uploadCsvFile(id, file)
-    if (taskId() !== id) return
-    notice.value = `已上传 CSV：${file.name}`
-    await loadWorkspace()
-  } catch (cause) {
-    if (taskId() === id) uploadError.value = reason(cause, '上传 CSV 失败。')
-  } finally {
-    csvBusy.value = false
-  }
-}
-
-async function uploadDocument(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  const id = taskId()
-  input.value = ''
-  if (!file || id === null || documentBusy.value || isRunning.value) return
-  uploadError.value = ''
-  notice.value = ''
-  if (!/\.(txt|md|markdown)$/i.test(file.name) || file.size === 0 || file.size > 1024 * 1024) {
-    uploadError.value = '请选择非空且不超过 1 MiB 的 TXT 或 Markdown 文件。'
+  const maxBytes = isText ? 1024 * 1024 : 5 * 1024 * 1024
+  if (file.size === 0 || file.size > maxBytes) {
+    uploadError.value = isText ? '文本资料必须非空且不超过 1 MiB。' : '文件必须非空且不超过 5 MiB。'
     return
   }
-  documentBusy.value = true
+  uploadBusy.value = true
   try {
-    await uploadKnowledgeDocument(id, file)
+    if (isTable) await uploadTableFile(id, file)
+    else await uploadKnowledgeDocument(id, file)
     if (taskId() !== id) return
-    notice.value = `已上传资料：${file.name}`
+    notice.value = `已上传${isTable ? '表格' : '资料'}：${file.name}`
     await loadWorkspace()
   } catch (cause) {
-    if (taskId() === id) uploadError.value = reason(cause, '上传资料失败。')
+    if (taskId() === id) uploadError.value = reason(cause, '上传文件失败。')
   } finally {
-    documentBusy.value = false
+    uploadBusy.value = false
   }
 }
 
 async function removeDocument(document: KnowledgeDocument) {
   const id = taskId()
-  if (id === null || documentBusy.value || isRunning.value) return
+  if (id === null || starting.value || uploadBusy.value || documentBusy.value || isRunning.value) return
   if (!window.confirm(`删除“${document.name}”？原文片段和执行引用也会清除，历史回答仍会保留。`)) return
   documentBusy.value = true
   uploadError.value = ''
@@ -257,7 +241,7 @@ async function togglePreview(fileId: number) {
     if (taskId() === id && version === previewVersion) preview.value = result
   } catch (cause) {
     if (taskId() === id && version === previewVersion) {
-      previewError.value = reason(cause, '加载 CSV 预览失败。')
+      previewError.value = reason(cause, '加载表格预览失败。')
     }
   } finally {
     if (taskId() === id && version === previewVersion) previewLoading.value = false
@@ -349,15 +333,22 @@ onUnmounted(() => {
       </div>
     </section>
 
+    <section class="panel workspace-section" aria-label="上传文件">
+      <div class="section-heading"><h2>上传文件</h2></div>
+      <label class="upload-control">
+        <span>{{ uploadBusy ? '正在上传…' : '选择文件' }}</span>
+        <input type="file" accept=".csv,.xls,.xlsx,.txt,.md,.markdown,.pdf,.doc,.docx" :disabled="starting || uploadBusy || documentBusy || isRunning" @change="uploadFile" />
+      </label>
+      <p class="field-hint">CSV、Excel 用于表格分析，单文件最多 5 MiB；TXT、Markdown 用于资料问答，最多 1 MiB。</p>
+      <p class="field-hint">PDF、Word 用于资料问答，文件最多 5 MiB、提取文字最多 1 MiB；扫描版 PDF 需先进行 OCR。</p>
+    </section>
+    <p v-if="uploadError" class="inline-error workspace-feedback" role="alert">{{ uploadError }}</p>
+    <p v-if="notice" class="inline-success workspace-feedback" role="status">{{ notice }}</p>
+
     <section class="workspace-grid" aria-label="任务文件">
       <div class="panel workspace-section">
-        <div class="section-heading"><h2>CSV 数据</h2><span class="muted">{{ csvFiles.length }} 个文件</span></div>
-        <label class="upload-control">
-          <span>{{ csvBusy ? '正在上传…' : '上传 CSV' }}</span>
-          <input type="file" accept=".csv,text/csv" :disabled="csvBusy || isRunning" @change="uploadCsv" />
-        </label>
-        <p class="field-hint">UTF-8，单文件最多 5 MiB。上传后可预览前 20 行。</p>
-        <p v-if="csvFiles.length === 0" class="empty-note">暂无 CSV 文件。</p>
+        <div class="section-heading"><h2>表格数据</h2><span class="muted">{{ csvFiles.length }} 个文件</span></div>
+        <p v-if="csvFiles.length === 0" class="empty-note">暂无表格文件。上传后可预览前 20 行。</p>
         <ul v-else class="file-list">
           <li v-for="file in csvFiles" :key="file.id">
             <div class="file-list__info">
@@ -388,11 +379,6 @@ onUnmounted(() => {
 
       <div class="panel workspace-section">
         <div class="section-heading"><h2>知识资料</h2><span class="muted">{{ documents.length }} 份资料</span></div>
-        <label class="upload-control">
-          <span>{{ documentBusy ? '正在处理…' : '上传资料' }}</span>
-          <input type="file" accept=".txt,.md,.markdown,text/plain,text/markdown" :disabled="documentBusy || isRunning" @change="uploadDocument" />
-        </label>
-        <p class="field-hint">UTF-8 TXT 或 Markdown，单文件最多 1 MiB。</p>
         <p v-if="documents.length === 0" class="empty-note">暂无资料。上传后可在提问时引用原文。</p>
         <ul v-else class="file-list">
           <li v-for="document in documents" :key="document.id">
@@ -400,17 +386,15 @@ onUnmounted(() => {
               <strong>{{ document.name }}</strong>
               <span>{{ document.chunkCount }} 个片段 · {{ formatSize(document.byteSize) }}</span>
             </div>
-            <button class="text-button text-button--danger" type="button" :disabled="documentBusy || isRunning" @click="removeDocument(document)">删除</button>
+            <button class="text-button text-button--danger" type="button" :disabled="starting || uploadBusy || documentBusy || isRunning" @click="removeDocument(document)">删除</button>
           </li>
         </ul>
       </div>
     </section>
-    <p v-if="uploadError" class="inline-error workspace-feedback" role="alert">{{ uploadError }}</p>
-    <p v-if="notice" class="inline-success workspace-feedback" role="status">{{ notice }}</p>
 
     <section class="panel conversation workspace-section" aria-label="任务对话">
       <div class="section-heading"><h2>任务对话</h2><span class="muted">{{ messages.length }} 条消息</span></div>
-      <p v-if="messages.length === 0" class="empty-note">输入问题，开始 CSV 分析或资料问答。</p>
+      <p v-if="messages.length === 0" class="empty-note">输入问题，开始表格分析或资料问答。</p>
       <ol v-else class="conversation__messages">
         <li v-for="message in messages" :key="message.id" :class="['conversation__message', message.role === 'USER' ? 'conversation__message--user' : 'conversation__message--assistant']">
           <div class="conversation__message-meta">
@@ -422,11 +406,11 @@ onUnmounted(() => {
       </ol>
       <form class="conversation__form" @submit.prevent="submitMessage">
         <label for="task-message">{{ messages.length === 0 ? '开始任务' : '继续提问' }}</label>
-        <textarea id="task-message" v-model="draft" rows="5" maxlength="5000" :disabled="starting || isRunning" placeholder="例如：请按月汇总 CSV 销售额；或根据上传资料回答退货期限。"></textarea>
+        <textarea id="task-message" v-model="draft" rows="5" maxlength="5000" :disabled="starting || uploadBusy || documentBusy || isRunning" placeholder="例如：请按月汇总表格销售额；或根据上传资料回答退货期限。"></textarea>
         <p v-if="sendError" class="form-error" role="alert">{{ sendError }}</p>
         <div class="conversation__actions">
           <span>最多 5000 个字符</span>
-          <button class="button" type="submit" :disabled="starting || isRunning">
+          <button class="button" type="submit" :disabled="starting || uploadBusy || documentBusy || isRunning">
             {{ starting ? '正在提交…' : isRunning ? '执行中…' : '开始执行' }}
           </button>
         </div>
@@ -462,7 +446,7 @@ onUnmounted(() => {
 
           <div class="result-grid">
             <div class="result-card">
-              <h3>CSV 分析结果</h3>
+              <h3>表格分析结果</h3>
               <p v-if="analyses.length === 0" class="empty-note">本次执行暂无结构化分析结果。</p>
               <article v-for="analysis in analyses" :key="analysis.id" class="result-entry">
                 <p><strong>文件 #{{ analysis.result.fileId }}</strong> · 按 {{ analysis.result.groupBy }} 汇总 {{ analysis.result.sumColumn }}{{ analysis.result.byMonth ? '（按月）' : '' }}</p>

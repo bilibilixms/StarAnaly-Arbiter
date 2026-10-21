@@ -38,7 +38,7 @@ public class OpenAiCompatibleModelGateway implements ModelGateway {
             "type", "function",
             "function", Map.of(
                     "name", "summarize_csv",
-                    "description", "对任务上传的 CSV 按列分组求和；日期列可按月汇总。",
+                    "description", "对任务上传的 CSV 或 Excel 表格按列分组求和；日期列可按月汇总。",
                     "parameters", Map.of(
                             "type", "object",
                             "properties", Map.of(
@@ -53,7 +53,7 @@ public class OpenAiCompatibleModelGateway implements ModelGateway {
             "type", "function",
             "function", Map.of(
                     "name", "search_knowledge",
-                    "description", "检索当前任务上传的 TXT 或 Markdown 资料，返回原文片段和来源行号。回答资料问题前调用。",
+                    "description", "检索当前任务上传的 TXT、Markdown、PDF 或 Word 资料，返回文字片段和来源行号。回答资料问题前调用。",
                     "parameters", Map.of(
                             "type", "object",
                             "properties", Map.of(
