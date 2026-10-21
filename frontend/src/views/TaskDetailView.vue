@@ -27,6 +27,7 @@ const loading = ref(false)
 const refreshing = ref(false)
 const starting = ref(false)
 const uploadBusy = ref(false)
+const uploadProgress = ref('')
 const documentBusy = ref(false)
 const previewLoading = ref(false)
 const loadError = ref('')
@@ -173,34 +174,52 @@ async function submitMessage() {
 
 async function uploadFile(event: Event) {
   const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
+  const files = Array.from(input.files ?? [])
   const id = taskId()
   input.value = ''
-  if (!file || id === null || starting.value || uploadBusy.value || documentBusy.value || isRunning.value) return
+  if (files.length === 0 || id === null || starting.value || uploadBusy.value || documentBusy.value || isRunning.value) return
   uploadError.value = ''
   notice.value = ''
-  const isTable = /\.(csv|xls|xlsx)$/i.test(file.name)
-  const isText = /\.(txt|md|markdown)$/i.test(file.name)
-  const isDocument = /\.(pdf|doc|docx)$/i.test(file.name)
-  if (!isTable && !isText && !isDocument) {
-    uploadError.value = '支持 CSV、Excel、TXT、Markdown、PDF 和 Word 文件。'
-    return
-  }
-  const maxBytes = isText ? 1024 * 1024 : 5 * 1024 * 1024
-  if (file.size === 0 || file.size > maxBytes) {
-    uploadError.value = isText ? '文本资料必须非空且不超过 1 MiB。' : '文件必须非空且不超过 5 MiB。'
+  if (files.length > 20) {
+    uploadError.value = '每次最多选择 20 个文件，请分批上传。'
     return
   }
   uploadBusy.value = true
+  let uploaded = 0
+  const failures: string[] = []
   try {
-    if (isTable) await uploadTableFile(id, file)
-    else await uploadKnowledgeDocument(id, file)
-    if (taskId() !== id) return
-    notice.value = `已上传${isTable ? '表格' : '资料'}：${file.name}`
-    await loadWorkspace()
-  } catch (cause) {
-    if (taskId() === id) uploadError.value = reason(cause, '上传文件失败。')
+    for (const [index, file] of files.entries()) {
+      if (taskId() !== id) break
+      uploadProgress.value = `正在上传 ${index + 1}/${files.length}：${file.name}`
+      const isTable = /\.(csv|xls|xlsx)$/i.test(file.name)
+      const isText = /\.(txt|md|markdown)$/i.test(file.name)
+      const isDocument = /\.(pdf|doc|docx)$/i.test(file.name)
+      if (!isTable && !isText && !isDocument) {
+        failures.push(`${file.name}：不支持的格式`)
+        continue
+      }
+      const maxBytes = isText ? 1024 * 1024 : 5 * 1024 * 1024
+      if (file.size === 0 || file.size > maxBytes) {
+        failures.push(`${file.name}：文件必须非空且不超过 ${isText ? '1' : '5'} MiB`)
+        continue
+      }
+      try {
+        if (isTable) await uploadTableFile(id, file)
+        else await uploadKnowledgeDocument(id, file)
+        uploaded++
+      } catch (cause) {
+        failures.push(`${file.name}：${reason(cause, '上传失败')}`)
+      }
+    }
+    if (taskId() === id) {
+      if (uploaded > 0) {
+        notice.value = files.length === 1 ? `已上传：${files[0].name}` : `成功上传 ${uploaded} 个文件。`
+        await loadWorkspace()
+      }
+      if (failures.length > 0) uploadError.value = `${failures.length} 个文件上传失败：${failures.join('；')}`
+    }
   } finally {
+    uploadProgress.value = ''
     uploadBusy.value = false
   }
 }
@@ -285,6 +304,7 @@ watch(() => route.params.id, () => {
   loadError.value = ''
   sendError.value = ''
   uploadError.value = ''
+  uploadProgress.value = ''
   previewError.value = ''
   notice.value = ''
   pendingPrompt = null
@@ -336,9 +356,11 @@ onUnmounted(() => {
     <section class="panel workspace-section" aria-label="上传文件">
       <div class="section-heading"><h2>上传文件</h2></div>
       <label class="upload-control">
-        <span>{{ uploadBusy ? '正在上传…' : '选择文件' }}</span>
-        <input type="file" accept=".csv,.xls,.xlsx,.txt,.md,.markdown,.pdf,.doc,.docx" :disabled="starting || uploadBusy || documentBusy || isRunning" @change="uploadFile" />
+        <span>{{ uploadBusy ? '正在上传…' : '选择文件（可多选）' }}</span>
+        <input type="file" multiple accept=".csv,.xls,.xlsx,.txt,.md,.markdown,.pdf,.doc,.docx" :disabled="starting || uploadBusy || documentBusy || isRunning" @change="uploadFile" />
       </label>
+      <p v-if="uploadProgress" class="field-hint" role="status">{{ uploadProgress }}</p>
+      <p class="field-hint">每次最多选择 20 个文件，上传后分别显示在表格数据或知识资料中。</p>
       <p class="field-hint">CSV、Excel 用于表格分析，单文件最多 5 MiB；TXT、Markdown 用于资料问答，最多 1 MiB。</p>
       <p class="field-hint">PDF、Word 用于资料问答，文件最多 5 MiB、提取文字最多 1 MiB；扫描版 PDF 需先进行 OCR。</p>
     </section>

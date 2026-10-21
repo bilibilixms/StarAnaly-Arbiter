@@ -693,6 +693,7 @@ h1 {
 .workspace-feedback {
   margin-top: -8px;
   margin-bottom: 24px;
+  overflow-wrap: anywhere;
 }
 
 .workspace-grid,
