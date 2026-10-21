@@ -728,3 +728,135 @@ dist/assets/TaskDetailView-*.js 14.51 kB │ gzip:  5.41 kB
 - 第 6 周记录的 `monthly-sales.csv` 大小为 87 B；但在验收所用的 `bac04c2` 提交中，仓库样例文件实际为 88 B。缺少当次上传响应，尚不能判断是记录笔误还是选取了不同的本地文件。下次请同时核对本地字节数、文件列表 API 的 `byteSize` 与页面显示。
 - 第 6 周错误提示与重试场景未实测，原报告已注明。对应复测步骤见 `docs/week-7-quality.md`。
 - 第 5 周报告提到的 NUL、分段上限与控制器错误分支在当时未被现有测试完整覆盖；第 7 周代码增补了这些测试，仍需在测试机运行确认。
+
+---
+
+# 第 7 周验证报告（2026-10-21，代码 5e9ce16）
+
+> 依据 [docs/week-7-quality.md](docs/week-7-quality.md)：集成与质量回归。以下为测试机实际运行结果。
+
+## 环境
+
+| 项 | 值 |
+| --- | --- |
+| 代码版本 | `5e9ce16 补充质量回归并修复资料分段边界` |
+| 数据库 | MySQL 8.0，容器 `staranaly-mysql`，`healthy` |
+| 迁移 | `Schema staranaly is up to date. No migration necessary.`（V5） |
+| 后端 | 启动 3.7～4.0s，Tomcat 8080 |
+| 前端 | Vite 8.3.4，`http://localhost:5173` |
+
+## 1. `mvn test`
+
+```
+Tests run: 43, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+```
+
+测试类明细：
+
+| 测试类 | 数量 |
+| --- | --- |
+| KnowledgeControllerTest | 3 |
+| KnowledgeCitationControllerTest | 1 |
+| KnowledgeTextProcessorTest | 4 |
+| TaskStartupRecoveryTest | 1 |
+| ReadOnlyToolRegistryTest | 5 |
+| TaskControllerTest | 5 |
+| TaskRunControllerTest | 3 |
+| TaskConversationControllerTest | 4 |
+| TaskConversationServiceTest | 5 |
+| TaskConversationStateTest | 6 |
+| CsvFileControllerTest | 1 |
+| CsvParserTest | 3 |
+| CsvAnalyzerTest | 2 |
+
+相比第 5 周的 35 项新增 8 项：`KnowledgeControllerTest` 3、`KnowledgeCitationControllerTest` 1、`KnowledgeTextProcessorTest` +2、`TaskConversationStateTest` +1、`CsvParserTest` +1，对应文档要求的 NUL、编码、分段上限、控制器错误响应与失败任务重试分支。
+
+## 2. `scripts/verify_quality.py`
+
+```bash
+cd scripts && python3 verify_quality.py
+```
+
+```
+[通过] 错误扩展名、编码、重复表头、NUL 字符与超大资料均被拒绝
+[通过] 跨任务 CSV 读取与资料删除被拒绝，跨任务检索无命中
+[通过] 无效检索词与 limit 越界返回明确错误
+[通过] 删除资料后不再命中
+exit=0
+```
+
+## 3. `scripts/verify_knowledge.py`（Unicode 分段修复后回归）
+
+```
+[通过] 上传并列出资料 #4
+[通过] 检索命中原文第 3 行，且无关问题无命中
+[通过] 模型调用检索工具，回答与结构化来源引用均已保存
+[通过] 删除资料后检索与引用均已清理
+exit=0
+```
+
+分段边界修改未影响检索命中与模型工具闭环。
+
+## 4. 前端构建
+
+```bash
+cd frontend && npm run build
+```
+
+```
+✓ 32 modules transformed.
+✓ built in 187ms
+```
+
+类型检查与构建通过。
+
+## 5. CSV 字节数核对（第 6 周 87 B / 88 B 差异）
+
+| 来源 | 值 |
+| --- | --- |
+| 本地 `fixtures/monthly-sales.csv` | **88 B**（5 个 LF，末尾含换行） |
+| `GET /api/tasks/12/files` 的 `byteSize` | **87 B** |
+| 页面显示 | **87 B** |
+
+结论：页面与接口一致（都是 87 B），差异不在页面，而在**当次上传的文件本身**。第 6 周浏览器验收是用脚本构造 `File` 上传的，构造内容末尾没有换行符，因此比仓库样例少 1 字节。第 6 周记录的 87 B 不是笔误，也非选取了不同文件；本次已用「本地文件 / 接口 / 页面」三方核对定位到原因。
+
+## 6. 浏览器：断开后端与恢复（第 6 周遗留项）
+
+1. 打开 `http://localhost:5173/tasks/12`，页面正常显示标题「前端验收-CSV」、`monthly-sales.csv`（87 B / 4 行）、1 次执行 5 个步骤。
+2. 停止后端进程后重新导航同一地址：
+   - 网络请求 `/api/tasks/12` 全部 `net::ERR_FAILED`
+   - 页面显示错误面板，原文：**「模型服务调用失败，请稍后重试。」**
+   - 面板内存在「重试」按钮
+   - 任务标题、文件、执行记录均不显示
+3. 用原环境变量重启后端（MySQL 容器未停），点击「重试」：
+   - 错误提示与「重试」按钮消失
+   - 任务标题、状态「已完成」、`monthly-sales.csv`（87 B / 4 行）、1 次执行 5 个步骤全部重新出现，无需重建任务
+
+## 7. 日志与密钥核对
+
+```
+grep -c 'sk-'          /tmp/staranaly-backend.log  → 0
+grep -ci 'authorization' /tmp/staranaly-backend.log → 0
+```
+
+运行日志中未出现模型密钥或 `Authorization` 头。日志里唯一的 WARN 是 Spring Data 的 `PageImpl` 序列化提示（`Serializing PageImpl instances as-is is not supported`），属于框架提示，不影响接口返回结构（分页字段已在多轮脚本中稳定验证）。
+
+## 8. 发现的问题（未修复）
+
+**错误文案与真实原因不符**：后端不可达时，Vite 代理返回 `502`，前端在 [tasks.ts](frontend/src/api/tasks.ts#L128) 将 `502` 映射为「模型服务调用失败，请稍后重试。」。用户会误以为模型服务故障，而实际是后端/网络不可达。验收要求只要求「连接失败提示 + 重试」，该提示存在且重试可用，因此判定通过；但文案建议区分「无法连接服务」与「模型服务调用失败」。
+
+## 9. 未执行项
+
+- 文档第 3 条「模型地址不可用 → 执行 FAILED → 恢复后重新提交成功」未执行：需要另起一个模型地址被阻断的后端实例，本轮未构造。
+- 断后端场景未截图：浏览器工具在标签不可见时截图失败，改用 DOM 文本与网络请求证据。
+
+## 第 7 周结论
+
+`docs/week-7-quality.md` 测试机执行项全部通过：43 项测试全绿、`verify_quality.py` 四项通过、`verify_knowledge.py` 回归通过、前端构建通过；CSV 87/88 字节差异已定位为验收构造文件缺少末尾换行，页面与接口本身一致；断开后端的错误提示与重试恢复在真实浏览器中验证通过。发现 1 处错误文案不准确（502 映射为模型服务失败），已记录未修复。
+
+## 环境备注
+
+- 验证结束时后端 8080 与前端 5173 均在运行，MySQL / Redis 容器保持运行。
+- 本次新增测试任务（脚本创建，未调用模型的部分不产生执行记录），未删除既有任务。
+- 本轮未修改仓库代码。
