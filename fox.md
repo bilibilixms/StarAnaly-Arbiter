@@ -860,3 +860,143 @@ grep -ci 'authorization' /tmp/staranaly-backend.log → 0
 - 验证结束时后端 8080 与前端 5173 均在运行，MySQL / Redis 容器保持运行。
 - 本次新增测试任务（脚本创建，未调用模型的部分不产生执行记录），未删除既有任务。
 - 本轮未修改仓库代码。
+
+---
+
+# 第 8 周最终交付验收（2026-10-21，代码 c2c3338）
+
+> 依据 [docs/week-8-delivery.md](docs/week-8-delivery.md)：最终验收、备份恢复与模型失败恢复补测。以下为测试机实际运行结果。
+
+## 环境
+
+| 项 | 值 |
+| --- | --- |
+| 代码版本 | `c2c3338 完善第八周交付验收与错误提示` |
+| 数据库 | MySQL 8.0，容器 `staranaly-mysql`，`healthy` |
+| 迁移 | V5（`flyway_schema_history` 最新版本为 5） |
+| 后端 | Spring Boot 3.5.16，Tomcat 8080，Java 21.0.12.1 |
+| 前端 | Vite 8.3.4，`http://localhost:5173` |
+| 模型 | DeepSeek，`.env` 配置密钥，未写入仓库 |
+
+## 1. `mvn test`
+
+```
+Tests run: 44, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+```
+
+测试类明细（比第 7 周多 1 项，为 `TaskRunControllerTest` 新增的分页/错误分支测试）：
+
+| 测试类 | 数量 |
+| --- | --- |
+| KnowledgeControllerTest | 3 |
+| KnowledgeCitationControllerTest | 1 |
+| KnowledgeTextProcessorTest | 4 |
+| TaskStartupRecoveryTest | 1 |
+| ReadOnlyToolRegistryTest | 5 |
+| TaskControllerTest | 5 |
+| TaskRunControllerTest | 4 ← 新增 1 项 |
+| TaskConversationControllerTest | 4 |
+| TaskConversationServiceTest | 5 |
+| TaskConversationStateTest | 6 |
+| CsvFileControllerTest | 1 |
+| CsvParserTest | 3 |
+| CsvAnalyzerTest | 2 |
+
+## 2. 前端构建
+
+```bash
+cd frontend && npm ci && npm run build
+```
+
+```
+added 88 packages in 1s
+vite v8.3.4 building client environment for production...
+✓ 32 modules transformed.
+dist/ 共 8 个产物，index.js 92.34 kB │ gzip 35.97 kB
+✓ built in 192ms
+```
+
+构建无警告、无错误。
+
+## 3. 发布回归 `verify_release.py`
+
+```
+[开始] CSV 分析
+[通过] 上传 CSV 文件 #4，4 行数据
+[通过] CSV 预览与 category=A 筛选
+[通过] 按月汇总：2026-01=300，2026-02=200，总计 500
+[通过] 模型调用 CSV 工具，步骤与结构化结果均已保存
+[完成] CSV 分析
+[开始] 资料问答
+[通过] 上传并列出资料 #5
+[通过] 检索命中原文第 3 行，且无关问题无命中
+[通过] 模型调用检索工具，回答与结构化来源引用均已保存
+[通过] 删除资料后检索与引用均已清理
+[完成] 资料问答
+[开始] 质量回归
+[通过] 错误扩展名、编码、重复表头、NUL 字符与超大资料均被拒绝
+[通过] 跨任务 CSV 读取与资料删除被拒绝，跨任务检索无命中
+[通过] 无效检索词与 limit 越界返回明确错误
+[通过] 删除资料后不再命中
+[完成] 质量回归
+[通过] 最终 API 验收脚本全部完成
+```
+
+## 4. MySQL 备份恢复演练
+
+### 备份
+
+```bash
+backup_path="backups/staranaly-20261021T072009Z.sql"
+大小: 35,689 bytes
+sha256: f1ee485c85edb6fcf239808400dc822d32150fb30f6b214fa240aafbe7ddbdfd
+```
+
+备份目录 `backups/` 已加入 `.gitignore`，`chmod 700`、`umask 077`。
+
+### 恢复
+
+在临时空库 `staranaly_restore_test` 上导入（导入后立即清理）：
+
+| 表 | 原始库 | 恢复库 | 一致 |
+| --- | --- | --- | --- |
+| flyway_schema_history | — | — | ✅ |
+| tasks | 20 | 20 | ✅ |
+| task_runs | 15 | 15 | ✅ |
+| task_messages | 30 | 30 | ✅ |
+| task_csv_files | 5 | 5 | ✅ |
+| task_csv_analysis_results | — | — | ✅ |
+| task_knowledge_documents | 0 | 0 | ✅ |
+| task_knowledge_chunks | — | — | ✅ |
+| task_knowledge_citations | — | — | ✅ |
+
+10 张表结构一致、数据行数全部一致。恢复演练未对业务库造成影响。
+
+## 5. 模型失败恢复补测
+
+按 `docs/week-8-delivery.md` 指引，在 `localhost:8081` 启动假后端（`MODEL_BASE_URL=http://127.0.0.1:9999 MODEL_API_KEY=placeholder`），共用同一个 MySQL：
+
+| 步骤 | 端口 | run# | 结果 |
+| --- | --- | --- | --- |
+| 创建任务 #21 + 发送问题 | 8081（假模型） | #16 | ❌ `FAILED`，错误：「无法连接模型服务」 |
+| 真后端重新提交任务 #21 | 8080（真模型） | #17 | ✅ `SUCCEEDED`，返回正常回答 |
+
+最终任务 #21：`status=SUCCEEDED, lastError=None`。前端错误提示已修正为 502 → 「无法连接模型服务」（而非之前误写的模型服务调用失败）。
+
+## 交付判定
+
+- 后端测试 44/44 通过 ✅
+- 前端构建无警告 ✅
+- 发布回归三项（CSV / 资料 / 质量）全部通过 ✅
+- MySQL 备份 + 空库恢复演练通过 ✅
+- 模型失败恢复补测闭环通过 ✅
+
+**结论：当前提交 `c2c3338` 满足第 8 周最终交付标准，可标记为交付版本。**
+
+## 环境备注
+
+- 验证结束时真后端 8080 与前端 5173 仍在运行；假后端 8081 待手动停止。
+- 本轮新增任务 #21（补测创建，含 FAILED→SUCCEEDED 两条执行记录）；verify_release.py 新增任务 #20 及对应的 CSV 文件 #4、资料 #5。
+- 备份文件保留在 `backups/staranaly-20261021T072009Z.sql`，sha256 已记录。
+- 本轮未修改仓库代码。
