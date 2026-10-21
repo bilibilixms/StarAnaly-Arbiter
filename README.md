@@ -8,6 +8,7 @@
 - MySQL 持久化；应用启动时由 Flyway 执行数据库迁移。
 - Docker Compose 提供 MySQL 和 Redis。当前任务 API 只使用 MySQL，Redis 尚未接入应用。
 - 任务创建、单条查询、分页列表，以及按任务保存的对话消息。
+- 每次对话对应一条执行记录；支持异步提交、状态查询和步骤记录。
 - 兼容 OpenAI Chat Completions 的模型调用；任务状态包含 `PENDING`、`RUNNING`、`SUCCEEDED`、`FAILED`。
 - `frontend/` 中的 Vue 3 + TypeScript 工作台，可创建任务、查看任务和继续对话。
 
@@ -54,7 +55,7 @@
 
 浏览器打开 `http://localhost:5173`。前端开发服务器会将 `/api` 请求转发至 `http://localhost:8080`；如果后端位于其他地址，启动前端时可设置 `BACKEND_URL` 环境变量。数据库和模型密钥都只由后端读取。
 
-应用默认连接 `localhost:3307` 上的 `staranaly` 数据库，并使用 `MYSQL_USER`、`MYSQL_PASSWORD`。如果数据库不在本机，可以设置 `DB_HOST`、`DB_PORT` 和 `DB_NAME`。首次启动时 Flyway 会创建任务和对话消息表。
+应用默认连接 `localhost:3307` 上的 `staranaly` 数据库，并使用 `MYSQL_USER`、`MYSQL_PASSWORD`。如果数据库不在本机，可以设置 `DB_HOST`、`DB_PORT` 和 `DB_NAME`。首次启动时 Flyway 会创建任务、对话消息和执行记录表。
 
 MySQL 官方镜像只在首次初始化数据目录时创建 `MYSQL_USER`。如果已有旧的 `mysql-data` 卷，需在现有数据库中手动创建该用户并授予 `staranaly` 数据库权限，或使用全新数据卷；不要删除仍需保留数据的卷。
 
@@ -89,6 +90,19 @@ curl http://localhost:8080/api/tasks/1/messages
 ```
 
 第一次发送消息时，任务标题和说明会作为上下文传给模型。后续请求会带上最近 20 条对话消息。调用期间任务为 `RUNNING`，成功后为 `SUCCEEDED`；失败时为 `FAILED`，任务详情中的 `lastError` 会记录原因。同一任务正在执行时再次发送消息返回 `409`。发送接口会等待模型回复，最长 90 秒。模型服务采用 [Chat Completions 请求格式](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)。
+
+需要立即获得执行编号时，使用异步接口：
+
+```bash
+curl -i -X POST http://localhost:8080/api/tasks/1/runs \
+  -H 'Content-Type: application/json' \
+  -d '{"content":"请继续分析"}'
+curl http://localhost:8080/api/tasks/1/runs
+curl http://localhost:8080/api/tasks/1/runs/执行编号
+curl http://localhost:8080/api/tasks/1/runs/执行编号/steps
+```
+
+异步创建返回 `202 Accepted` 和执行详情地址；将示例中的“执行编号”换成响应中的 `id`。执行结果通过详情及原有消息接口查看。完整契约和验证命令见 [第 2 周执行记录说明](docs/week-2-execution.md)。
 
 ## 测试
 
