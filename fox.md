@@ -416,3 +416,109 @@ exit=0
 
 - 验证结束已停止应用（8080 释放），MySQL / Redis 容器保持运行。
 - 测试库保留了任务 #6 ~ #9 的验证数据，均为本地开发数据。
+
+---
+
+# 第 4 周验证报告（2026-10-21，代码 ca3d51b）
+
+> 依据 [docs/week-4-csv.md](docs/week-4-csv.md)：CSV 上传分析与模型工具联动。
+
+## 环境
+
+| 项 | 值 |
+| --- | --- |
+| 代码版本 | `ca3d51b 新增 CSV 上传分析与模型工具联动` |
+| 数据库 | MySQL 8.0，容器 `staranaly-mysql`，`healthy` |
+| 迁移 | V4 首次执行成功 |
+| 应用 | 启动 4.0s，Tomcat 8080 |
+| 样例 | `fixtures/monthly-sales.csv`（88 字节，4 行） |
+
+V4 迁移日志：
+
+```
+Migrating schema `staranaly` to version "4 - csv files"
+Successfully applied 1 migration to schema `staranaly`, now at version v4 (execution time 00:00.108s)
+```
+
+新建 `task_csv_files`、`task_csv_analysis_results` 两张表。
+
+## 1. `mvn test`
+
+```
+Tests run: 30, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+```
+
+分布：
+
+| 测试类 | 数量 |
+| --- | --- |
+| TaskStartupRecoveryTest | 1 |
+| ReadOnlyToolRegistryTest | 3 |
+| TaskControllerTest | 5 |
+| TaskRunControllerTest | 3 |
+| TaskConversationControllerTest | 4 |
+| TaskConversationServiceTest | 5 |
+| TaskConversationStateTest | 4 |
+| CsvFileControllerTest | 1 |
+| CsvParserTest | 2 |
+| CsvAnalyzerTest | 2 |
+
+本周新增 CSV 相关 5 项测试，全部通过。
+
+## 2. `scripts/verify_csv.py`
+
+```bash
+cd scripts && python3 verify_csv.py
+```
+
+```
+[通过] 上传 CSV 文件 #1，4 行数据
+[通过] CSV 预览与 category=A 筛选
+[通过] 按月汇总：2026-01=300，2026-02=200，总计 500
+[通过] 模型调用 CSV 工具，步骤与结构化结果均已保存
+exit=0
+```
+
+任务 #10，文件 #1 `monthly-sales.csv`，列 `date/category/amount`，4 行。
+
+筛选 `category=A` 返回 2 行；按月汇总 `2026-01=300`、`2026-02=200`、总计 `500`。
+
+执行 #8 步骤：
+
+| stepNumber | kind | toolName | status | inputSummary | outputSummary |
+| --- | --- | --- | --- | --- | --- |
+| 1 | MODEL_CALL | - | SUCCEEDED | 请求模型生成回复 | 模型请求 1 个工具 |
+| 2 | TOOL_CALL | summarize_csv | SUCCEEDED | 模型请求工具 summarize_csv | 参数校验通过 |
+| 3 | TOOL_RESULT | summarize_csv | SUCCEEDED | CSV 文件 1：按 date 汇总 amount | 得到 2 组，总计 500 |
+| 4 | MODEL_CALL | - | SUCCEEDED | 提交工具结果并请求模型回复 | 模型返回 189 字符 |
+| 5 | FINAL_ANSWER | - | SUCCEEDED | 保存最终回复 | 回复已保存 |
+
+结构化分析结果（`GET /api/tasks/10/runs/8/analysis`）：
+
+```json
+{
+  "fileId": 1, "groupBy": "date", "sumColumn": "amount", "byMonth": true,
+  "matchedRows": 4, "total": 500,
+  "groups": [
+    {"key": "2026-01", "sum": 300, "rowCount": 2},
+    {"key": "2026-02", "sum": 200, "rowCount": 2}
+  ]
+}
+```
+
+最终模型回复以表格给出 2026-01=300、2026-02=200、总计 500，与确定性计算结果一致。
+
+## 3. 边界说明
+
+本轮按文档验收范围执行了 `mvn test` 与 `verify_csv.py`，未额外构造上传大小、列数、行数、跨任务文件归属等边界场景；这些约束由 5 项 CSV 单元测试覆盖。
+
+## 第 4 周结论
+
+`docs/week-4-csv.md` 的验收项全部通过：V4 迁移成功、30 项测试全绿、CSV 上传/预览/筛选/按月汇总结果与固定样例一致（300 / 200 / 500）、模型成功调用 `summarize_csv`、步骤与结构化分析结果均已落库。
+
+## 环境备注
+
+- 验证结束已停止应用（8080 释放），MySQL / Redis 容器保持运行。
+- 测试库保留任务 #10 及其文件 #1、执行 #8、分析结果 #1，均为本地开发数据。
+- 本轮未修改代码。
