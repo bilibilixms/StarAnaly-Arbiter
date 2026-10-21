@@ -1,6 +1,6 @@
 # 星析 Agent · StarAnaly
 
-一个面向智能任务执行与数据分析的 AI Agent 项目。当前已实现任务创建、MySQL 持久化、模型对话及对应的前端任务页面。工具调用、知识检索和数据分析仍在规划中。
+一个面向智能任务执行与数据分析的 AI Agent 项目。当前已实现任务创建、MySQL 持久化、模型对话、受控工具、CSV 分析和基础资料检索；前端任务页面仍待接入文件与结果展示。
 
 ## 当前实现
 
@@ -11,6 +11,7 @@
 - 每次对话对应一条执行记录；支持异步提交、状态查询和步骤记录。
 - 模型可调用受控的只读整数加法工具，工具请求、结果与最终回答均有步骤记录。
 - 支持上传 CSV、预览和筛选数据、分组求和，并通过模型工具保存结构化分析结果。
+- 支持上传 TXT/Markdown 资料，检索原文片段，记录执行中的来源引用，并删除资料。
 - 兼容 OpenAI Chat Completions 的模型调用；任务状态包含 `PENDING`、`RUNNING`、`SUCCEEDED`、`FAILED`。
 - `frontend/` 中的 Vue 3 + TypeScript 工作台，可创建任务、查看任务和继续对话。
 
@@ -110,6 +111,8 @@ curl http://localhost:8080/api/tasks/1/runs/执行编号/steps
 
 CSV 上传与按月汇总可用 `python3 scripts/verify_csv.py` 验证，接口和文件限制见 [第 4 周 CSV 说明](docs/week-4-csv.md)。
 
+资料检索与来源引用可用 `python3 scripts/verify_knowledge.py` 验证，接口和限制见 [第 5 周资料检索说明](docs/week-5-knowledge.md)。
+
 ## 测试
 
 ```bash
@@ -125,8 +128,7 @@ mvn test
 7～9 周的阶段目标、每周交付和验收口径见 [开发规划说明书](docs/development-plan.md)。
 第 1 周的验证命令、固定演示数据和执行方案见 [基线核对与执行方案](docs/week-1-baseline.md)。
 
-1. 增加工具调用与更完整的任务执行过程记录。
-2. 加入知识检索与数据分析能力。
-3. 扩展工作空间界面，展示执行步骤与分析结果。
+1. 在用户测试机验收第 5 周资料检索与来源引用。
+2. 扩展工作空间界面，展示上传资料、执行步骤、分析结果与引用。
 
 本项目采用 [MIT License](LICENSE)。

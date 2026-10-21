@@ -1,10 +1,13 @@
 package com.staranaly.arbiter.task;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
 import com.staranaly.arbiter.model.ModelMessage;
 import com.staranaly.arbiter.csv.CsvFileService;
+import com.staranaly.arbiter.knowledge.KnowledgeDocumentMetadata;
+import com.staranaly.arbiter.knowledge.KnowledgeService;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -23,8 +26,9 @@ class TaskConversationStateTest {
     private final TaskRunRepository runRepository = mock(TaskRunRepository.class);
     private final TaskRunStepRepository stepRepository = mock(TaskRunStepRepository.class);
     private final CsvFileService csvFiles = mock(CsvFileService.class);
+    private final KnowledgeService knowledge = mock(KnowledgeService.class);
     private final TaskConversationState state = new TaskConversationState(
-            taskRepository, messageRepository, runRepository, stepRepository, csvFiles);
+            taskRepository, messageRepository, runRepository, stepRepository, csvFiles, knowledge);
 
     @Test
     void includesTaskContextAndRecentMessagesInChronologicalOrder() {
@@ -43,6 +47,22 @@ class TaskConversationStateTest {
                 .containsExactly("system", "user", "user", "assistant", "user");
         assertThat(prompt.get(1).content()).contains("分析销售额", "按月汇总");
         assertThat(prompt.get(4).content()).isEqualTo("继续分析");
+    }
+
+    @Test
+    void includesKnowledgeMetadataWithoutPuttingRawDocumentInPrompt() {
+        Task task = new Task("核对退货规则", null);
+        when(taskRepository.findByIdForUpdate(42L)).thenReturn(Optional.of(task));
+        when(knowledge.list(42L)).thenReturn(List.of(new KnowledgeDocumentMetadata(
+                3L, 42L, "规则.md", 120, 2, Instant.now())));
+        when(runRepository.save(any(TaskRun.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        List<ModelMessage> prompt = state.begin(42L, "何时退货？").context();
+
+        assertThat(prompt.get(0).content()).contains("search_knowledge", "没有命中时说明未找到依据");
+        assertThat(prompt).extracting(ModelMessage::content)
+                .anySatisfy(value -> assertThat(value).contains("资料 ID=3", "规则.md"));
+        assertThat(prompt.toString()).doesNotContain("签收日起 14 天");
     }
 
     @Test

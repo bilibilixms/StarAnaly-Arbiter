@@ -49,6 +49,17 @@ public class OpenAiCompatibleModelGateway implements ModelGateway {
                                     "filterColumn", Map.of("type", "string"),
                                     "filterValue", Map.of("type", "string")),
                             "required", List.of("fileId", "groupBy", "sumColumn", "byMonth"),
+                            "additionalProperties", false))), Map.of(
+            "type", "function",
+            "function", Map.of(
+                    "name", "search_knowledge",
+                    "description", "检索当前任务上传的 TXT 或 Markdown 资料，返回原文片段和来源行号。回答资料问题前调用。",
+                    "parameters", Map.of(
+                            "type", "object",
+                            "properties", Map.of(
+                                    "query", Map.of("type", "string"),
+                                    "topK", Map.of("type", "integer")),
+                            "required", List.of("query"),
                             "additionalProperties", false))));
 
     private final HttpClient client;

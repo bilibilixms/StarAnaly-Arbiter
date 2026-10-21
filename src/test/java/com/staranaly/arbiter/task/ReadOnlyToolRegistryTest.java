@@ -7,6 +7,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.staranaly.arbiter.csv.CsvAggregateGroup;
 import com.staranaly.arbiter.csv.CsvAggregateResponse;
 import com.staranaly.arbiter.csv.CsvFileService;
+import com.staranaly.arbiter.knowledge.KnowledgeHit;
+import com.staranaly.arbiter.knowledge.KnowledgeSearchResponse;
+import com.staranaly.arbiter.knowledge.KnowledgeService;
 import com.staranaly.arbiter.model.ModelServiceException;
 import com.staranaly.arbiter.model.ModelToolCall;
 import org.junit.jupiter.api.Test;
@@ -20,7 +23,8 @@ import static org.mockito.Mockito.when;
 class ReadOnlyToolRegistryTest {
 
     private final CsvFileService csvFiles = mock(CsvFileService.class);
-    private final ReadOnlyToolRegistry tools = new ReadOnlyToolRegistry(new ObjectMapper(), csvFiles);
+    private final KnowledgeService knowledge = mock(KnowledgeService.class);
+    private final ReadOnlyToolRegistry tools = new ReadOnlyToolRegistry(new ObjectMapper(), csvFiles, knowledge);
 
     @Test
     void addsTwoBoundedIntegers() {
@@ -64,5 +68,26 @@ class ReadOnlyToolRegistryTest {
 
         assertThat(result.content()).contains("2026-01", "300", "2026-02", "200");
         verify(csvFiles).saveAnalysis(7L, 3L, analysis);
+    }
+
+    @Test
+    void searchesKnowledgeForCurrentTaskAndRun() {
+        KnowledgeSearchResponse matches = new KnowledgeSearchResponse("退货期限", List.of(
+                new KnowledgeHit(11L, 3L, "规则.md", 2, 3, "签收日起 14 天内", 2)));
+        when(knowledge.searchForTool(42L, 7L, "退货期限", 2)).thenReturn(matches);
+
+        ToolResult result = tools.execute(new ModelToolCall("call_2", "search_knowledge",
+                "{\"query\":\"退货期限\",\"topK\":2}"), 42L, 7L);
+
+        assertThat(result.content()).contains("规则.md", "14 天", "startLine");
+        verify(knowledge).searchForTool(42L, 7L, "退货期限", 2);
+    }
+
+    @Test
+    void rejectsUnexpectedKnowledgeArguments() {
+        assertThatThrownBy(() -> tools.execute(new ModelToolCall("call_2", "search_knowledge",
+                "{\"query\":\"退货期限\",\"fileId\":3}"), 42L, 7L))
+                .isInstanceOf(ModelServiceException.class)
+                .hasMessage("模型资料检索参数无效。");
     }
 }

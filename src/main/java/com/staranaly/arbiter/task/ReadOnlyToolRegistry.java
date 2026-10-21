@@ -9,6 +9,9 @@ import com.staranaly.arbiter.csv.CsvAggregateResponse;
 import com.staranaly.arbiter.csv.CsvFileNotFoundException;
 import com.staranaly.arbiter.csv.CsvFileService;
 import com.staranaly.arbiter.csv.CsvInputException;
+import com.staranaly.arbiter.knowledge.KnowledgeInputException;
+import com.staranaly.arbiter.knowledge.KnowledgeSearchResponse;
+import com.staranaly.arbiter.knowledge.KnowledgeService;
 import com.staranaly.arbiter.model.ModelServiceException;
 import com.staranaly.arbiter.model.ModelToolCall;
 import org.springframework.http.HttpStatus;
@@ -21,14 +24,18 @@ public class ReadOnlyToolRegistry {
 
     private final ObjectMapper objectMapper;
     private final CsvFileService csvFiles;
+    private final KnowledgeService knowledge;
 
-    public ReadOnlyToolRegistry(ObjectMapper objectMapper, CsvFileService csvFiles) {
+    public ReadOnlyToolRegistry(ObjectMapper objectMapper, CsvFileService csvFiles,
+            KnowledgeService knowledge) {
         this.objectMapper = objectMapper;
         this.csvFiles = csvFiles;
+        this.knowledge = knowledge;
     }
 
     public ToolResult execute(ModelToolCall call, Long taskId, Long runId) {
-        if (!"sum_two_numbers".equals(call.name()) && !"summarize_csv".equals(call.name())) {
+        if (!"sum_two_numbers".equals(call.name()) && !"summarize_csv".equals(call.name())
+                && !"search_knowledge".equals(call.name())) {
             throw new ModelServiceException(HttpStatus.BAD_GATEWAY, "模型请求了未授权的工具。");
         }
         JsonNode arguments;
@@ -43,6 +50,9 @@ public class ReadOnlyToolRegistry {
         }
         if ("summarize_csv".equals(call.name())) {
             return summarizeCsv(arguments, taskId, runId);
+        }
+        if ("search_knowledge".equals(call.name())) {
+            return searchKnowledge(arguments, taskId, runId);
         }
         if (arguments == null || !arguments.isObject() || arguments.size() != 2
                 || !validInteger(arguments.path("a")) || !validInteger(arguments.path("b"))) {
@@ -94,6 +104,35 @@ public class ReadOnlyToolRegistry {
         return new ToolResult(content,
                 "CSV 文件 " + fileId + "：按 " + groupBy + " 汇总 " + sumColumn,
                 "得到 " + result.groups().size() + " 组，总计 " + result.total().toPlainString());
+    }
+
+    private ToolResult searchKnowledge(JsonNode arguments, Long taskId, Long runId) {
+        if (arguments == null || !arguments.isObject() || arguments.size() < 1 || arguments.size() > 2
+                || !arguments.path("query").isTextual()
+                || (arguments.size() == 2 && (!arguments.has("topK")
+                        || !arguments.path("topK").isIntegralNumber()
+                        || !arguments.path("topK").canConvertToInt()))) {
+            throw new ModelServiceException(HttpStatus.BAD_GATEWAY, "模型资料检索参数无效。");
+        }
+        String query = arguments.path("query").asText();
+        int topK = arguments.has("topK") ? arguments.path("topK").intValue() : 5;
+        KnowledgeSearchResponse result;
+        try {
+            result = knowledge.searchForTool(taskId, runId, query, topK);
+        } catch (KnowledgeInputException exception) {
+            throw new ModelServiceException(HttpStatus.BAD_GATEWAY, "模型资料检索参数无效。");
+        }
+        String content;
+        try {
+            content = objectMapper.writeValueAsString(result);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException exception) {
+            throw new ModelServiceException(HttpStatus.BAD_GATEWAY, "无法编码资料检索结果。");
+        }
+        if (content.length() > 10_000) {
+            throw new ModelServiceException(HttpStatus.BAD_GATEWAY, "资料检索结果超过模型输入限制。");
+        }
+        return new ToolResult(content, "资料检索：" + query,
+                "命中 " + result.hits().size() + " 个片段");
     }
 
     private static boolean validColumn(JsonNode value) {

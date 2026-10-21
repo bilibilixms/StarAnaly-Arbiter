@@ -8,6 +8,7 @@ import java.util.concurrent.RejectedExecutionException;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.staranaly.arbiter.csv.CsvFileService;
+import com.staranaly.arbiter.knowledge.KnowledgeService;
 import com.staranaly.arbiter.model.ModelGateway;
 import com.staranaly.arbiter.model.ModelMessage;
 import com.staranaly.arbiter.model.ModelReply;
@@ -33,7 +34,7 @@ class TaskConversationServiceTest {
     private final ModelGateway modelGateway = mock(ModelGateway.class);
     private final ExecutorService executor = mock(ExecutorService.class);
     private final ReadOnlyToolRegistry tools = new ReadOnlyToolRegistry(
-            new ObjectMapper(), mock(CsvFileService.class));
+            new ObjectMapper(), mock(CsvFileService.class), mock(KnowledgeService.class));
     private final TaskConversationService service = new TaskConversationService(state, modelGateway, tools, executor);
 
     @Test
