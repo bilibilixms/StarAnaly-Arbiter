@@ -54,25 +54,45 @@ public class TaskConversationState {
     }
 
     @Transactional
-    public TaskMessageResponse succeed(Long runId, String content, String answer) {
-        TaskRun run = runRepository.findByIdForUpdate(runId)
-                .orElseThrow(() -> new IllegalStateException("Task run disappeared: " + runId));
-        if (run.getStatus() != TaskStatus.RUNNING) {
-            throw new IllegalStateException("Task run is no longer running: " + runId);
+    public void beginStep(Long runId, int stepNumber, TaskRunStepKind kind, String toolName, String summary) {
+        TaskRun run = requireRunningRun(runId);
+        stepRepository.save(new TaskRunStep(run, stepNumber, kind, toolName, summary));
+    }
+
+    @Transactional
+    public void completeStep(Long runId, int stepNumber, String summary) {
+        requireRunningRun(runId);
+        TaskRunStep step = stepRepository.findByRun_IdAndStepNumber(runId, stepNumber)
+                .orElseThrow(() -> new IllegalStateException("Step disappeared for run: " + runId));
+        if (step.getStatus() != TaskRunStepStatus.RUNNING) {
+            throw new IllegalStateException("Step is no longer running for run: " + runId);
         }
+        step.markSucceeded(summary);
+    }
+
+    @Transactional
+    public TaskMessageResponse succeed(Long runId, String content, String answer, int finalStepNumber) {
+        TaskRun run = requireRunningRun(runId);
         Task task = taskRepository.findByIdForUpdate(run.getTaskId())
                 .orElseThrow(() -> new IllegalStateException("Task disappeared for run: " + runId));
         messageRepository.save(new TaskMessage(task, "USER", content));
         TaskMessage reply = messageRepository.save(new TaskMessage(task, "ASSISTANT", answer));
-        TaskRunStep modelStep = stepRepository.findByRun_IdAndStepNumber(runId, 1)
-                .orElseThrow(() -> new IllegalStateException("Model step disappeared for run: " + runId));
-        modelStep.markSucceeded("模型返回 " + answer.codePointCount(0, answer.length()) + " 字符");
-        TaskRunStep finalStep = new TaskRunStep(run, 2, TaskRunStepKind.FINAL_ANSWER, "保存最终回复");
+        TaskRunStep finalStep = new TaskRunStep(run, finalStepNumber, TaskRunStepKind.FINAL_ANSWER,
+                "保存最终回复");
         finalStep.markSucceeded("回复已保存");
         stepRepository.save(finalStep);
         run.markSucceeded();
         task.markSucceeded();
         return TaskMessageResponse.from(reply);
+    }
+
+    private TaskRun requireRunningRun(Long runId) {
+        TaskRun run = runRepository.findByIdForUpdate(runId)
+                .orElseThrow(() -> new IllegalStateException("Task run disappeared: " + runId));
+        if (run.getStatus() != TaskStatus.RUNNING) {
+            throw new IllegalStateException("Task run is no longer running: " + runId);
+        }
+        return run;
     }
 
     @Transactional

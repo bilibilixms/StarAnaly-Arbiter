@@ -1,8 +1,9 @@
 package com.staranaly.arbiter.model;
 
 import java.util.List;
+import java.time.Duration;
 
 public interface ModelGateway {
 
-    String complete(List<ModelMessage> messages);
+    ModelReply next(List<ModelConversationMessage> messages, boolean allowTools, Duration timeout);
 }

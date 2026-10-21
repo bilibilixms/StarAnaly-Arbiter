@@ -7,6 +7,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -19,6 +21,20 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class OpenAiCompatibleModelGateway implements ModelGateway {
+
+    private static final int MAX_RESPONSE_CHARS = 1_000_000;
+    private static final int MAX_ARGUMENT_CHARS = 2_000;
+    private static final List<Map<String, Object>> TOOLS = List.of(Map.of(
+            "type", "function",
+            "function", Map.of(
+                    "name", "sum_two_numbers",
+                    "description", "计算两个整数的和。涉及两个整数加法时调用此工具。",
+                    "parameters", Map.of(
+                            "type", "object",
+                            "properties", Map.of("a", Map.of("type", "integer"),
+                                    "b", Map.of("type", "integer")),
+                            "required", List.of("a", "b"),
+                            "additionalProperties", false))));
 
     private final HttpClient client;
     private final ObjectMapper objectMapper;
@@ -40,7 +56,7 @@ public class OpenAiCompatibleModelGateway implements ModelGateway {
     }
 
     @Override
-    public String complete(List<ModelMessage> messages) {
+    public ModelReply next(List<ModelConversationMessage> messages, boolean allowTools, Duration timeout) {
         if (apiKey.isBlank()) {
             throw new ModelServiceException(HttpStatus.SERVICE_UNAVAILABLE,
                     "模型服务尚未配置 MODEL_API_KEY 或 DEEPSEEK_API_KEY。");
@@ -52,13 +68,26 @@ public class OpenAiCompatibleModelGateway implements ModelGateway {
 
         String requestBody;
         try {
-            requestBody = objectMapper.writeValueAsString(Map.of("model", model, "messages", messages));
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("model", model);
+            payload.put("messages", messages.stream().map(ModelConversationMessage::toRequest).toList());
+            if (allowTools) {
+                payload.put("tools", TOOLS);
+                payload.put("tool_choice", "auto");
+            } else if (messages.stream().anyMatch(message -> message.toolCalls() != null)) {
+                payload.put("tools", TOOLS);
+                payload.put("tool_choice", "none");
+            }
+            if (model.startsWith("deepseek-")) {
+                payload.put("thinking", Map.of("type", "disabled"));
+            }
+            requestBody = objectMapper.writeValueAsString(payload);
         } catch (JsonProcessingException exception) {
             throw new ModelServiceException(HttpStatus.BAD_GATEWAY, "无法构造模型请求。");
         }
 
         HttpRequest request = HttpRequest.newBuilder(endpoint)
-                .timeout(Duration.ofSeconds(90))
+                .timeout(timeout)
                 .header("Authorization", "Bearer " + apiKey)
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
@@ -78,20 +107,54 @@ public class OpenAiCompatibleModelGateway implements ModelGateway {
             throw new ModelServiceException(HttpStatus.BAD_GATEWAY,
                     "模型服务返回 HTTP " + response.statusCode() + "。");
         }
+        if (response.body().length() > MAX_RESPONSE_CHARS) {
+            throw new ModelServiceException(HttpStatus.BAD_GATEWAY, "模型响应超过当前长度限制。");
+        }
 
         try {
-            JsonNode content = objectMapper.readTree(response.body())
-                    .path("choices").path(0).path("message").path("content");
-            if (!content.isTextual() || content.asText().isBlank()) {
+            JsonNode message = objectMapper.readTree(response.body()).path("choices").path(0).path("message");
+            if (!message.isObject()) {
+                throw new ModelServiceException(HttpStatus.BAD_GATEWAY, "模型回复缺少消息对象。");
+            }
+            JsonNode rawCalls = message.path("tool_calls");
+            List<ModelToolCall> calls = new ArrayList<>();
+            if (!rawCalls.isMissingNode() && !rawCalls.isNull()) {
+                if (!rawCalls.isArray() || rawCalls.size() > 2) {
+                    throw new ModelServiceException(HttpStatus.BAD_GATEWAY, "模型工具请求数量无效。");
+                }
+                for (JsonNode call : rawCalls) {
+                    String id = text(call.path("id"));
+                    String name = text(call.path("function").path("name"));
+                    String arguments = text(call.path("function").path("arguments"));
+                    if (!"function".equals(text(call.path("type"))) || id == null || id.length() > 100
+                            || name == null || name.length() > 100 || arguments == null
+                            || arguments.length() > MAX_ARGUMENT_CHARS) {
+                        throw new ModelServiceException(HttpStatus.BAD_GATEWAY, "模型工具请求格式无效。");
+                    }
+                    calls.add(new ModelToolCall(id, name, arguments));
+                }
+            }
+            if (!calls.isEmpty()) {
+                String toolMessageContent = text(message.path("content"));
+                if (toolMessageContent != null && toolMessageContent.length() > 10000) {
+                    throw new ModelServiceException(HttpStatus.BAD_GATEWAY, "模型回复超过当前长度限制。");
+                }
+                return new ModelReply(toolMessageContent, List.copyOf(calls));
+            }
+            String answer = text(message.path("content"));
+            if (answer == null) {
                 throw new ModelServiceException(HttpStatus.BAD_GATEWAY, "模型服务未返回文本回复。");
             }
-            String answer = content.asText().strip();
             if (answer.length() > 10000) {
                 throw new ModelServiceException(HttpStatus.BAD_GATEWAY, "模型回复超过当前长度限制。");
             }
-            return answer;
+            return new ModelReply(answer.strip(), List.of());
         } catch (JsonProcessingException exception) {
             throw new ModelServiceException(HttpStatus.BAD_GATEWAY, "无法读取模型回复。");
         }
+    }
+
+    private static String text(JsonNode value) {
+        return value.isTextual() && !value.asText().isBlank() ? value.asText() : null;
     }
 }

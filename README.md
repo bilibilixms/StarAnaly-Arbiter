@@ -9,6 +9,7 @@
 - Docker Compose 提供 MySQL 和 Redis。当前任务 API 只使用 MySQL，Redis 尚未接入应用。
 - 任务创建、单条查询、分页列表，以及按任务保存的对话消息。
 - 每次对话对应一条执行记录；支持异步提交、状态查询和步骤记录。
+- 模型可调用受控的只读整数加法工具，工具请求、结果与最终回答均有步骤记录。
 - 兼容 OpenAI Chat Completions 的模型调用；任务状态包含 `PENDING`、`RUNNING`、`SUCCEEDED`、`FAILED`。
 - `frontend/` 中的 Vue 3 + TypeScript 工作台，可创建任务、查看任务和继续对话。
 
@@ -89,7 +90,7 @@ curl -X POST http://localhost:8080/api/tasks/1/messages \
 curl http://localhost:8080/api/tasks/1/messages
 ```
 
-第一次发送消息时，任务标题和说明会作为上下文传给模型。后续请求会带上最近 20 条对话消息。调用期间任务为 `RUNNING`，成功后为 `SUCCEEDED`；失败时为 `FAILED`，任务详情中的 `lastError` 会记录原因。同一任务正在执行时再次发送消息返回 `409`。发送接口会等待模型回复，最长 90 秒。模型服务采用 [Chat Completions 请求格式](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)。
+第一次发送消息时，任务标题和说明会作为上下文传给模型。后续请求会带上最近 20 条对话消息。调用期间任务为 `RUNNING`，成功后为 `SUCCEEDED`；失败时为 `FAILED`，任务详情中的 `lastError` 会记录原因。同一任务正在执行时再次发送消息返回 `409`。同步发送接口最多等待约 120 秒，单次模型请求最多 90 秒。模型服务采用 [Chat Completions 请求格式](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)。
 
 需要立即获得执行编号时，使用异步接口：
 
@@ -103,6 +104,8 @@ curl http://localhost:8080/api/tasks/1/runs/执行编号/steps
 ```
 
 异步创建返回 `202 Accepted` 和执行详情地址；将示例中的“执行编号”换成响应中的 `id`。执行结果通过详情及原有消息接口查看。完整契约和验证命令见 [第 2 周执行记录说明](docs/week-2-execution.md)。
+
+第 3 周只读工具闭环可用 `python3 scripts/verify_tool_loop.py` 验证，限制与步骤说明见 [第 3 周工具闭环说明](docs/week-3-tool-loop.md)。
 
 ## 测试
 

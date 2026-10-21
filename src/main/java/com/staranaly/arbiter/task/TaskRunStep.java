@@ -57,10 +57,15 @@ public class TaskRunStep {
     }
 
     public TaskRunStep(TaskRun run, int stepNumber, TaskRunStepKind kind, String inputSummary) {
+        this(run, stepNumber, kind, null, inputSummary);
+    }
+
+    public TaskRunStep(TaskRun run, int stepNumber, TaskRunStepKind kind, String toolName, String inputSummary) {
         this.run = run;
         this.stepNumber = stepNumber;
         this.kind = kind;
         this.status = TaskRunStepStatus.RUNNING;
+        this.toolName = toolName;
         this.inputSummary = inputSummary;
         this.startedAt = LocalDateTime.now(ZoneOffset.UTC);
     }

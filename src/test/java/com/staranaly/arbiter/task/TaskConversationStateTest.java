@@ -91,7 +91,8 @@ class TaskConversationStateTest {
             return message;
         });
 
-        TaskMessageResponse reply = state.succeed(7L, "继续分析", "已完成分析");
+        state.completeStep(7L, 1, "模型返回 5 字符");
+        TaskMessageResponse reply = state.succeed(7L, "继续分析", "已完成分析", 2);
 
         assertThat(reply.content()).isEqualTo("已完成分析");
         assertThat(run.getStatus()).isEqualTo(TaskStatus.SUCCEEDED);
