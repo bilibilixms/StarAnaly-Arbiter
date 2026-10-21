@@ -1,6 +1,6 @@
 # 星析 Agent · StarAnaly
 
-一个面向智能任务执行与数据分析的 AI Agent 项目。当前已实现任务创建、MySQL 持久化、模型对话、受控工具、CSV 分析和基础资料检索；前端任务页面仍待接入文件与结果展示。
+一个面向智能任务执行与数据分析的 AI Agent 项目。当前已实现任务创建、MySQL 持久化、模型对话、受控工具、CSV 分析和基础资料检索；前端工作台已接入文件上传、执行步骤、分析结果与来源引用。
 
 ## 当前实现
 
@@ -13,7 +13,7 @@
 - 支持上传 CSV、预览和筛选数据、分组求和，并通过模型工具保存结构化分析结果。
 - 支持上传 TXT/Markdown 资料，检索原文片段，记录执行中的来源引用，并删除资料。
 - 兼容 OpenAI Chat Completions 的模型调用；任务状态包含 `PENDING`、`RUNNING`、`SUCCEEDED`、`FAILED`。
-- `frontend/` 中的 Vue 3 + TypeScript 工作台，可创建任务、查看任务和继续对话。
+- `frontend/` 中的 Vue 3 + TypeScript 工作台，可创建任务、上传文件、发起任务执行并查看步骤和结果。
 
 ## 本地运行
 
@@ -58,7 +58,7 @@
 
 浏览器打开 `http://localhost:5173`。前端开发服务器会将 `/api` 请求转发至 `http://localhost:8080`；如果后端位于其他地址，启动前端时可设置 `BACKEND_URL` 环境变量。数据库和模型密钥都只由后端读取。
 
-应用默认连接 `localhost:3307` 上的 `staranaly` 数据库，并使用 `MYSQL_USER`、`MYSQL_PASSWORD`。如果数据库不在本机，可以设置 `DB_HOST`、`DB_PORT` 和 `DB_NAME`。首次启动时 Flyway 会创建任务、对话消息和执行记录表。
+应用默认连接 `localhost:3307` 上的 `staranaly` 数据库，并使用 `MYSQL_USER`、`MYSQL_PASSWORD`。如果数据库不在本机，可以设置 `DB_HOST`、`DB_PORT` 和 `DB_NAME`。首次启动时 Flyway 会创建任务、对话、执行记录、CSV 和资料相关表。
 
 MySQL 官方镜像只在首次初始化数据目录时创建 `MYSQL_USER`。如果已有旧的 `mysql-data` 卷，需在现有数据库中手动创建该用户并授予 `staranaly` 数据库权限，或使用全新数据卷；不要删除仍需保留数据的卷。
 
@@ -113,6 +113,8 @@ CSV 上传与按月汇总可用 `python3 scripts/verify_csv.py` 验证，接口�
 
 资料检索与来源引用可用 `python3 scripts/verify_knowledge.py` 验证，接口和限制见 [第 5 周资料检索说明](docs/week-5-knowledge.md)。
 
+前端浏览器验收步骤见 [第 6 周工作台说明](docs/week-6-frontend.md)。
+
 ## 测试
 
 ```bash
@@ -128,7 +130,7 @@ mvn test
 7～9 周的阶段目标、每周交付和验收口径见 [开发规划说明书](docs/development-plan.md)。
 第 1 周的验证命令、固定演示数据和执行方案见 [基线核对与执行方案](docs/week-1-baseline.md)。
 
-1. 在用户测试机验收第 5 周资料检索与来源引用。
-2. 扩展工作空间界面，展示上传资料、执行步骤、分析结果与引用。
+1. 在用户测试机运行前端构建并验收 CSV 分析和资料问答的浏览器流程。
+2. 根据真实联调结果修复问题，再进入第 7 周集成质量检查。
 
 本项目采用 [MIT License](LICENSE)。
