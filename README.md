@@ -7,7 +7,7 @@
 - Java 21、Spring Boot 3.5、Maven 后端。
 - MySQL 持久化；应用启动时由 Flyway 执行数据库迁移。
 - Docker Compose 提供 MySQL 和 Redis。当前任务 API 只使用 MySQL，Redis 尚未接入应用。
-- 任务创建、单条查询、分页列表，以及按任务保存的对话消息。
+- 任务创建、单条查询、按状态分页浏览和任务名容错搜索，以及按任务保存的对话消息。
 - 每次对话对应一条执行记录；支持异步提交、状态查询和步骤记录。
 - 模型可调用受控的只读整数加法工具，工具请求、结果与最终回答均有步骤记录。
 - 支持上传 CSV、XLS、XLSX 表格，预览和筛选数据、分组求和，并通过模型工具保存结构化分析结果。
@@ -79,9 +79,10 @@ curl -i -X POST http://localhost:8080/api/tasks \
 ```bash
 curl http://localhost:8080/api/tasks/1
 curl 'http://localhost:8080/api/tasks?page=0&size=20'
+curl 'http://localhost:8080/api/tasks?page=0&size=20&status=SUCCEEDED&query=%E9%94%80%E5%94%AE%E9%A2%9D'
 ```
 
-任务不存在时返回 `404`；标题为空或超过 200 字符、描述超过 5000 字符时返回 `400`。
+列表可按 `PENDING`、`RUNNING`、`SUCCEEDED`、`FAILED` 筛选。`query` 搜索任务标题，支持包含匹配和少量错别字：1～2 字只做包含匹配，3～5 字允许 1 处差异，6 字及以上允许 2 处差异；先显示更接近的结果，同名任务按不同 ID 分别显示。搜索在全部任务中匹配后分页，当前面向单用户、小规模任务库。任务不存在时返回 `404`；标题为空或超过 200 字符、描述超过 5000 字符、搜索词超过 200 字符时返回 `400`。
 
 向任务发送消息并获取模型回复：
 

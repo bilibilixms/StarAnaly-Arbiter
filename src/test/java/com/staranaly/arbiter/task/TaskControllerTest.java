@@ -14,6 +14,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -84,7 +86,8 @@ class TaskControllerTest {
     void listsTasksWithPagination() throws Exception {
         TaskResponse task = new TaskResponse(42L, "分析销售额", null, TaskStatus.PENDING,
                 Instant.parse("2026-10-20T02:00:00Z"), null);
-        when(service.findAll(any())).thenReturn(new PageImpl<>(List.of(task), PageRequest.of(0, 20), 1));
+        when(service.findAll(any(), isNull(), isNull()))
+                .thenReturn(new PageImpl<>(List.of(task), PageRequest.of(0, 20), 1));
 
         mvc.perform(get("/api/tasks"))
                 .andExpect(status().isOk())
@@ -93,5 +96,18 @@ class TaskControllerTest {
                 .andExpect(jsonPath("$.number").value(0))
                 .andExpect(jsonPath("$.size").value(20))
                 .andExpect(jsonPath("$.pageable").doesNotExist());
+    }
+
+    @Test
+    void acceptsStatusAndTitleSearchTogether() throws Exception {
+        TaskResponse task = new TaskResponse(42L, "分析销售额", null, TaskStatus.FAILED,
+                Instant.parse("2026-10-20T02:00:00Z"), null);
+        when(service.findAll(any(), eq(TaskStatus.FAILED), eq("分折销售额")))
+                .thenReturn(new PageImpl<>(List.of(task), PageRequest.of(0, 20), 1));
+
+        mvc.perform(get("/api/tasks").param("status", "FAILED").param("query", "分折销售额"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].id").value(42))
+                .andExpect(jsonPath("$.totalElements").value(1));
     }
 }
