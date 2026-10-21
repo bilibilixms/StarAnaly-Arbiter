@@ -109,7 +109,7 @@ onUnmounted(() => {
       <form class="task-filters__search" role="search" @submit.prevent="applySearch">
         <label for="task-title-search">查找任务</label>
         <input id="task-title-search" v-model="searchInput" type="search" maxlength="200"
-          placeholder="输入任务名称，支持部分名称或少量错别字" />
+          placeholder="输入任务名，支持同拼音汉字和少量错字" />
         <button class="button button--secondary button--small" type="submit">搜索</button>
       </form>
     </div>
