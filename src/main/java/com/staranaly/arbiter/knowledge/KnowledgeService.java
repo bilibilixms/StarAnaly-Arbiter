@@ -26,13 +26,15 @@ public class KnowledgeService {
     private final TaskRepository tasks;
     private final TaskRunRepository runs;
     private final KnowledgeTextProcessor processor;
+    private final KnowledgeDocumentParser documentParser;
 
     public KnowledgeService(JdbcTemplate jdbc, TaskRepository tasks, TaskRunRepository runs,
-            KnowledgeTextProcessor processor) {
+            KnowledgeTextProcessor processor, KnowledgeDocumentParser documentParser) {
         this.jdbc = jdbc;
         this.tasks = tasks;
         this.runs = runs;
         this.processor = processor;
+        this.documentParser = documentParser;
     }
 
     @Transactional
@@ -40,11 +42,14 @@ public class KnowledgeService {
         ensureTask(taskId);
         String name = safeName(file.getOriginalFilename());
         String lower = name.toLowerCase(Locale.ROOT);
-        if (!lower.endsWith(".txt") && !lower.endsWith(".md") && !lower.endsWith(".markdown")) {
-            throw new KnowledgeInputException("只支持 TXT 或 Markdown 资料。");
+        boolean plainText = lower.endsWith(".txt") || lower.endsWith(".md") || lower.endsWith(".markdown");
+        if (!plainText && !lower.endsWith(".pdf") && !lower.endsWith(".doc") && !lower.endsWith(".docx")) {
+            throw new KnowledgeInputException("只支持 TXT、Markdown、PDF 或 Word 资料。");
         }
-        if (file.getSize() == 0 || file.getSize() > KnowledgeTextProcessor.MAX_BYTES) {
-            throw new KnowledgeInputException("资料必须非空且不超过 1 MiB。");
+        int maxBytes = plainText ? KnowledgeTextProcessor.MAX_BYTES : KnowledgeDocumentParser.MAX_BINARY_BYTES;
+        if (file.getSize() == 0 || file.getSize() > maxBytes) {
+            throw new KnowledgeInputException(plainText ? "文本资料必须非空且不超过 1 MiB。"
+                    : "PDF 或 Word 文件必须非空且不超过 5 MiB。");
         }
         byte[] bytes;
         try {
@@ -52,7 +57,7 @@ public class KnowledgeService {
         } catch (IOException exception) {
             throw new KnowledgeInputException("无法读取上传的资料。");
         }
-        String content = processor.decode(bytes);
+        String content = documentParser.parse(name, bytes);
         List<KnowledgeChunk> chunks = processor.chunks(content);
         LocalDateTime created = LocalDateTime.now(ZoneOffset.UTC);
         GeneratedKeyHolder keys = new GeneratedKeyHolder();

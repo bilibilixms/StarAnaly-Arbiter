@@ -26,12 +26,12 @@ public class CsvFileService {
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
-    private final CsvParser parser;
+    private final TableParser parser;
     private final CsvAnalyzer analyzer;
     private final TaskRepository tasks;
     private final TaskRunRepository runs;
 
-    public CsvFileService(JdbcTemplate jdbc, ObjectMapper objectMapper, CsvParser parser,
+    public CsvFileService(JdbcTemplate jdbc, ObjectMapper objectMapper, TableParser parser,
             CsvAnalyzer analyzer, TaskRepository tasks, TaskRunRepository runs) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
@@ -44,19 +44,20 @@ public class CsvFileService {
     public CsvFileMetadata upload(Long taskId, MultipartFile file) {
         ensureTask(taskId);
         String name = safeName(file.getOriginalFilename());
-        if (!name.toLowerCase(Locale.ROOT).endsWith(".csv")) {
-            throw new CsvInputException("只支持 .csv 文件。");
+        String lower = name.toLowerCase(Locale.ROOT);
+        if (!lower.endsWith(".csv") && !lower.endsWith(".xls") && !lower.endsWith(".xlsx")) {
+            throw new CsvInputException("只支持 CSV、XLS 或 XLSX 表格。");
         }
         if (file.getSize() == 0 || file.getSize() > CsvParser.MAX_BYTES) {
-            throw new CsvInputException("CSV 文件必须非空且不超过 5 MiB。");
+            throw new CsvInputException("表格文件必须非空且不超过 5 MiB。");
         }
         byte[] bytes;
         try {
             bytes = file.getBytes();
         } catch (IOException exception) {
-            throw new CsvInputException("无法读取上传的 CSV 文件。");
+            throw new CsvInputException("无法读取上传的表格文件。");
         }
-        CsvData data = parser.parse(bytes);
+        CsvData data = parser.parse(name, bytes);
         String headers = json(data.headers());
         LocalDateTime created = LocalDateTime.now(ZoneOffset.UTC);
         GeneratedKeyHolder keys = new GeneratedKeyHolder();
@@ -77,7 +78,7 @@ public class CsvFileService {
         }, keys);
         Number id = keys.getKey();
         if (id == null) {
-            throw new IllegalStateException("CSV file ID was not generated");
+            throw new IllegalStateException("Table file ID was not generated");
         }
         return new CsvFileMetadata(id.longValue(), taskId, name, bytes.length, data.rows().size(),
                 data.headers(), created.toInstant(ZoneOffset.UTC));
@@ -93,20 +94,20 @@ public class CsvFileService {
 
     public CsvPreviewResponse preview(Long taskId, Long fileId, int limit) {
         CsvFileMetadata file = find(taskId, fileId);
-        CsvData data = parser.parse(content(taskId, fileId));
+        CsvData data = parser.parse(file.name(), content(taskId, fileId));
         return new CsvPreviewResponse(file, analyzer.rows(data, null, null, limit));
     }
 
     public List<Map<String, String>> rows(Long taskId, Long fileId,
             String filterColumn, String filterValue, int limit) {
-        find(taskId, fileId);
-        return analyzer.rows(parser.parse(content(taskId, fileId)), filterColumn, filterValue, limit);
+        CsvFileMetadata file = find(taskId, fileId);
+        return analyzer.rows(parser.parse(file.name(), content(taskId, fileId)), filterColumn, filterValue, limit);
     }
 
     public CsvAggregateResponse aggregate(Long taskId, Long fileId, String groupBy, String sumColumn,
             boolean byMonth, String filterColumn, String filterValue) {
-        find(taskId, fileId);
-        return analyzer.aggregate(fileId, parser.parse(content(taskId, fileId)), groupBy,
+        CsvFileMetadata file = find(taskId, fileId);
+        return analyzer.aggregate(fileId, parser.parse(file.name(), content(taskId, fileId)), groupBy,
                 sumColumn, byMonth, filterColumn, filterValue);
     }
 
@@ -189,12 +190,12 @@ public class CsvFileService {
 
     private static String safeName(String original) {
         if (original == null) {
-            throw new CsvInputException("CSV 文件名不能为空。");
+            throw new CsvInputException("表格文件名不能为空。");
         }
         String normalized = original.replace('\\', '/');
         String name = normalized.substring(normalized.lastIndexOf('/') + 1);
         if (name.isBlank() || name.length() > 255 || name.chars().anyMatch(Character::isISOControl)) {
-            throw new CsvInputException("CSV 文件名无效。");
+            throw new CsvInputException("表格文件名无效。");
         }
         return name;
     }

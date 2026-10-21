@@ -215,7 +215,7 @@ function uploadFile<T>(path: string, file: File): Promise<T> {
   return request<T>(path, { method: 'POST', body })
 }
 
-export function uploadCsvFile(taskId: number, file: File): Promise<CsvFile> {
+export function uploadTableFile(taskId: number, file: File): Promise<CsvFile> {
   return uploadFile<CsvFile>(`/tasks/${taskId}/files`, file)
 }
 

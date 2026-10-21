@@ -1,6 +1,6 @@
 # 星析 Agent · StarAnaly
 
-一个面向智能任务执行与数据分析的 AI Agent 项目。当前已实现任务创建、MySQL 持久化、模型对话、受控工具、CSV 分析和基础资料检索；前端工作台已接入文件上传、执行步骤、分析结果与来源引用。
+一个面向智能任务执行与数据分析的 AI Agent 项目。当前已实现任务创建、MySQL 持久化、模型对话、受控工具、表格分析和基础资料检索；前端工作台已接入统一文件上传、执行步骤、分析结果与来源引用。
 
 ## 当前实现
 
@@ -10,8 +10,8 @@
 - 任务创建、单条查询、分页列表，以及按任务保存的对话消息。
 - 每次对话对应一条执行记录；支持异步提交、状态查询和步骤记录。
 - 模型可调用受控的只读整数加法工具，工具请求、结果与最终回答均有步骤记录。
-- 支持上传 CSV、预览和筛选数据、分组求和，并通过模型工具保存结构化分析结果。
-- 支持上传 TXT/Markdown 资料，检索原文片段，记录执行中的来源引用，并删除资料。
+- 支持上传 CSV、XLS、XLSX 表格，预览和筛选数据、分组求和，并通过模型工具保存结构化分析结果。
+- 支持上传 TXT、Markdown、PDF、DOC、DOCX 资料，检索提取的文字片段，记录执行中的来源引用，并删除资料。
 - 兼容 OpenAI Chat Completions 的模型调用；任务状态包含 `PENDING`、`RUNNING`、`SUCCEEDED`、`FAILED`。
 - `frontend/` 中的 Vue 3 + TypeScript 工作台，可创建任务、上传文件、发起任务执行并查看步骤和结果。
 
@@ -115,7 +115,7 @@ CSV 上传与按月汇总可用 `python3 scripts/verify_csv.py` 验证，接口�
 
 前端浏览器验收步骤见 [第 6 周工作台说明](docs/week-6-frontend.md)。
 
-文件边界、跨任务隔离和失败恢复检查见 [第 7 周质量回归说明](docs/week-7-quality.md)，后端运行时可执行 `python3 scripts/verify_quality.py`。
+文件边界、跨任务隔离和失败恢复检查见 [第 7 周质量回归说明](docs/week-7-quality.md)，后端运行时可执行 `python3 scripts/verify_quality.py`。新增格式和统一上传入口的边界见 [文件上传说明](docs/file-upload.md)。
 
 最终验收、部署配置和 MySQL 备份恢复见 [第 8 周交付说明](docs/week-8-delivery.md)。
 
