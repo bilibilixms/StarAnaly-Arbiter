@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Optional;
 
 import com.staranaly.arbiter.model.ModelMessage;
+import com.staranaly.arbiter.csv.CsvFileService;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -21,8 +22,9 @@ class TaskConversationStateTest {
     private final TaskMessageRepository messageRepository = mock(TaskMessageRepository.class);
     private final TaskRunRepository runRepository = mock(TaskRunRepository.class);
     private final TaskRunStepRepository stepRepository = mock(TaskRunStepRepository.class);
+    private final CsvFileService csvFiles = mock(CsvFileService.class);
     private final TaskConversationState state = new TaskConversationState(
-            taskRepository, messageRepository, runRepository, stepRepository);
+            taskRepository, messageRepository, runRepository, stepRepository, csvFiles);
 
     @Test
     void includesTaskContextAndRecentMessagesInChronologicalOrder() {

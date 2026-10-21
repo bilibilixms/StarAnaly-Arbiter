@@ -11,6 +11,10 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
+  servlet:
+    multipart:
+      max-file-size: 5120KB
+      max-request-size: 6MB
 
 staranaly:
   model:

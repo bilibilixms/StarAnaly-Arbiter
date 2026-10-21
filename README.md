@@ -10,6 +10,7 @@
 - 任务创建、单条查询、分页列表，以及按任务保存的对话消息。
 - 每次对话对应一条执行记录；支持异步提交、状态查询和步骤记录。
 - 模型可调用受控的只读整数加法工具，工具请求、结果与最终回答均有步骤记录。
+- 支持上传 CSV、预览和筛选数据、分组求和，并通过模型工具保存结构化分析结果。
 - 兼容 OpenAI Chat Completions 的模型调用；任务状态包含 `PENDING`、`RUNNING`、`SUCCEEDED`、`FAILED`。
 - `frontend/` 中的 Vue 3 + TypeScript 工作台，可创建任务、查看任务和继续对话。
 
@@ -106,6 +107,8 @@ curl http://localhost:8080/api/tasks/1/runs/执行编号/steps
 异步创建返回 `202 Accepted` 和执行详情地址；将示例中的“执行编号”换成响应中的 `id`。执行结果通过详情及原有消息接口查看。完整契约和验证命令见 [第 2 周执行记录说明](docs/week-2-execution.md)。
 
 第 3 周只读工具闭环可用 `python3 scripts/verify_tool_loop.py` 验证，限制与步骤说明见 [第 3 周工具闭环说明](docs/week-3-tool-loop.md)。
+
+CSV 上传与按月汇总可用 `python3 scripts/verify_csv.py` 验证，接口和文件限制见 [第 4 周 CSV 说明](docs/week-4-csv.md)。
 
 ## 测试
 

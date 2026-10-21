@@ -114,7 +114,7 @@ public class TaskConversationService {
                 stepNumber++;
                 state.beginStep(started.runId(), stepNumber, TaskRunStepKind.TOOL_CALL,
                         call.name(), "模型请求工具 " + call.name());
-                ToolResult result = tools.execute(call);
+                ToolResult result = tools.execute(call, started.response().taskId(), started.runId());
                 state.completeStep(started.runId(), stepNumber, "参数校验通过");
                 stepNumber++;
                 state.beginStep(started.runId(), stepNumber, TaskRunStepKind.TOOL_RESULT,

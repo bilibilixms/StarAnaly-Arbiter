@@ -34,6 +34,21 @@ public class OpenAiCompatibleModelGateway implements ModelGateway {
                             "properties", Map.of("a", Map.of("type", "integer"),
                                     "b", Map.of("type", "integer")),
                             "required", List.of("a", "b"),
+                            "additionalProperties", false))), Map.of(
+            "type", "function",
+            "function", Map.of(
+                    "name", "summarize_csv",
+                    "description", "对任务上传的 CSV 按列分组求和；日期列可按月汇总。",
+                    "parameters", Map.of(
+                            "type", "object",
+                            "properties", Map.of(
+                                    "fileId", Map.of("type", "integer"),
+                                    "groupBy", Map.of("type", "string"),
+                                    "sumColumn", Map.of("type", "string"),
+                                    "byMonth", Map.of("type", "boolean"),
+                                    "filterColumn", Map.of("type", "string"),
+                                    "filterValue", Map.of("type", "string")),
+                            "required", List.of("fileId", "groupBy", "sumColumn", "byMonth"),
                             "additionalProperties", false))));
 
     private final HttpClient client;

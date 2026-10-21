@@ -5,6 +5,10 @@ import java.io.IOException;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.staranaly.arbiter.csv.CsvAggregateResponse;
+import com.staranaly.arbiter.csv.CsvFileNotFoundException;
+import com.staranaly.arbiter.csv.CsvFileService;
+import com.staranaly.arbiter.csv.CsvInputException;
 import com.staranaly.arbiter.model.ModelServiceException;
 import com.staranaly.arbiter.model.ModelToolCall;
 import org.springframework.http.HttpStatus;
@@ -16,13 +20,15 @@ public class ReadOnlyToolRegistry {
     private static final int MAX_ABS_OPERAND = 1_000_000;
 
     private final ObjectMapper objectMapper;
+    private final CsvFileService csvFiles;
 
-    public ReadOnlyToolRegistry(ObjectMapper objectMapper) {
+    public ReadOnlyToolRegistry(ObjectMapper objectMapper, CsvFileService csvFiles) {
         this.objectMapper = objectMapper;
+        this.csvFiles = csvFiles;
     }
 
-    public ToolResult execute(ModelToolCall call) {
-        if (!"sum_two_numbers".equals(call.name())) {
+    public ToolResult execute(ModelToolCall call, Long taskId, Long runId) {
+        if (!"sum_two_numbers".equals(call.name()) && !"summarize_csv".equals(call.name())) {
             throw new ModelServiceException(HttpStatus.BAD_GATEWAY, "模型请求了未授权的工具。");
         }
         JsonNode arguments;
@@ -35,6 +41,9 @@ public class ReadOnlyToolRegistry {
         } catch (IOException exception) {
             throw new ModelServiceException(HttpStatus.BAD_GATEWAY, "模型工具参数不是有效 JSON。");
         }
+        if ("summarize_csv".equals(call.name())) {
+            return summarizeCsv(arguments, taskId, runId);
+        }
         if (arguments == null || !arguments.isObject() || arguments.size() != 2
                 || !validInteger(arguments.path("a")) || !validInteger(arguments.path("b"))) {
             throw new ModelServiceException(HttpStatus.BAD_GATEWAY, "模型工具参数无效。");
@@ -43,6 +52,52 @@ public class ReadOnlyToolRegistry {
         int b = arguments.path("b").intValue();
         String result = Integer.toString(a + b);
         return new ToolResult(result, "整数加法：a=" + a + "，b=" + b, "计算结果：" + result);
+    }
+
+    private ToolResult summarizeCsv(JsonNode arguments, Long taskId, Long runId) {
+        if (arguments == null || !arguments.isObject()
+                || (arguments.size() != 4 && arguments.size() != 6)
+                || !arguments.path("fileId").isIntegralNumber()
+                || !arguments.path("fileId").canConvertToLong()
+                || arguments.path("fileId").longValue() <= 0
+                || !validColumn(arguments.path("groupBy"))
+                || !validColumn(arguments.path("sumColumn"))
+                || !arguments.path("byMonth").isBoolean()
+                || (arguments.size() == 6 && (!validColumn(arguments.path("filterColumn"))
+                        || !arguments.path("filterValue").isTextual()
+                        || arguments.path("filterValue").asText().length() > 200))) {
+            throw new ModelServiceException(HttpStatus.BAD_GATEWAY, "模型 CSV 工具参数无效。");
+        }
+        Long fileId = arguments.path("fileId").longValue();
+        String groupBy = arguments.path("groupBy").asText();
+        String sumColumn = arguments.path("sumColumn").asText();
+        boolean byMonth = arguments.path("byMonth").booleanValue();
+        String filterColumn = arguments.size() == 6 ? arguments.path("filterColumn").asText() : null;
+        String filterValue = arguments.size() == 6 ? arguments.path("filterValue").asText() : null;
+        CsvAggregateResponse result;
+        try {
+            result = csvFiles.aggregate(taskId, fileId, groupBy, sumColumn,
+                    byMonth, filterColumn, filterValue);
+        } catch (CsvInputException | CsvFileNotFoundException exception) {
+            throw new ModelServiceException(HttpStatus.BAD_GATEWAY, "模型 CSV 工具参数无效或文件不可用。");
+        }
+        String content;
+        try {
+            content = objectMapper.writeValueAsString(result);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException exception) {
+            throw new ModelServiceException(HttpStatus.BAD_GATEWAY, "无法编码 CSV 分析结果。");
+        }
+        if (content.length() > 10_000) {
+            throw new ModelServiceException(HttpStatus.BAD_GATEWAY, "CSV 分析结果超过模型输入限制。");
+        }
+        csvFiles.saveAnalysis(runId, fileId, result);
+        return new ToolResult(content,
+                "CSV 文件 " + fileId + "：按 " + groupBy + " 汇总 " + sumColumn,
+                "得到 " + result.groups().size() + " 组，总计 " + result.total().toPlainString());
+    }
+
+    private static boolean validColumn(JsonNode value) {
+        return value.isTextual() && !value.asText().isBlank() && value.asText().length() <= 100;
     }
 
     private static boolean validInteger(JsonNode value) {
