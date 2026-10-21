@@ -60,10 +60,16 @@ public class KnowledgeTextProcessor {
                 flush(result, current, startLine, endLine);
                 current.setLength(0);
                 startLine = 0;
-                for (int offset = 0; offset < line.length(); offset += CHUNK_CHARS) {
-                    String part = line.substring(offset, Math.min(offset + CHUNK_CHARS, line.length()));
+                for (int offset = 0; offset < line.length();) {
+                    int end = Math.min(offset + CHUNK_CHARS, line.length());
+                    if (end < line.length() && Character.isHighSurrogate(line.charAt(end - 1))
+                            && Character.isLowSurrogate(line.charAt(end))) {
+                        end--;
+                    }
+                    String part = line.substring(offset, end);
                     result.add(new KnowledgeChunk(result.size() + 1, lineNumber, lineNumber, part));
                     checkCount(result);
+                    offset = end;
                 }
                 continue;
             }

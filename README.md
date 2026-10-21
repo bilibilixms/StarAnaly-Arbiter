@@ -115,6 +115,8 @@ CSV 上传与按月汇总可用 `python3 scripts/verify_csv.py` 验证，接口�
 
 前端浏览器验收步骤见 [第 6 周工作台说明](docs/week-6-frontend.md)。
 
+文件边界、跨任务隔离和失败恢复检查见 [第 7 周质量回归说明](docs/week-7-quality.md)，后端运行时可执行 `python3 scripts/verify_quality.py`。
+
 ## 测试
 
 ```bash
@@ -130,7 +132,7 @@ mvn test
 7～9 周的阶段目标、每周交付和验收口径见 [开发规划说明书](docs/development-plan.md)。
 第 1 周的验证命令、固定演示数据和执行方案见 [基线核对与执行方案](docs/week-1-baseline.md)。
 
-1. 在用户测试机运行前端构建并验收 CSV 分析和资料问答的浏览器流程。
-2. 根据真实联调结果修复问题，再进入第 7 周集成质量检查。
+1. 在用户测试机完成第 7 周边界与失败恢复回归，核对运行日志。
+2. 根据回归结果修复问题，再整理第 8 周验收与交付材料。
 
 本项目采用 [MIT License](LICENSE)。

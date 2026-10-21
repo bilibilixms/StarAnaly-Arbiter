@@ -28,4 +28,16 @@ class CsvParserTest {
         assertThatThrownBy(() -> parser.parse("a,b\n1\n".getBytes(StandardCharsets.UTF_8)))
                 .isInstanceOf(CsvInputException.class).hasMessageContaining("列数不一致");
     }
+
+    @Test
+    void rejectsNulAndTooManyColumnsOrRows() {
+        assertThatThrownBy(() -> parser.parse("name\nA\0B\n".getBytes(StandardCharsets.UTF_8)))
+                .isInstanceOf(CsvInputException.class).hasMessageContaining("无效字符");
+        String tooManyColumns = "value,".repeat(50) + "value\n";
+        assertThatThrownBy(() -> parser.parse(tooManyColumns.getBytes(StandardCharsets.UTF_8)))
+                .isInstanceOf(CsvInputException.class).hasMessageContaining("50");
+        String tooManyRows = "name\n" + "value\n".repeat(50_001);
+        assertThatThrownBy(() -> parser.parse(tooManyRows.getBytes(StandardCharsets.UTF_8)))
+                .isInstanceOf(CsvInputException.class).hasMessageContaining("50,000");
+    }
 }

@@ -45,4 +45,25 @@ class KnowledgeTextProcessorTest {
         assertThatThrownBy(() -> processor.rank(List.of(), "退货", 6))
                 .isInstanceOf(KnowledgeInputException.class);
     }
+
+    @Test
+    void keepsSupplementaryUnicodeCharacterWholeAtChunkBoundary() {
+        List<KnowledgeChunk> chunks = processor.chunks("a".repeat(799) + "😀" + "b");
+
+        assertThat(chunks).hasSize(2);
+        assertThat(chunks.get(0).content()).isEqualTo("a".repeat(799));
+        assertThat(chunks.get(1).content()).isEqualTo("😀b");
+        assertThat(chunks).allSatisfy(chunk -> assertThat(chunk.startLine()).isEqualTo(1));
+    }
+
+    @Test
+    void rejectsNulOversizedFileAndTooManyChunks() {
+        assertThatThrownBy(() -> processor.decode("说明\0正文".getBytes(StandardCharsets.UTF_8)))
+                .isInstanceOf(KnowledgeInputException.class);
+        assertThatThrownBy(() -> processor.decode(new byte[KnowledgeTextProcessor.MAX_BYTES + 1]))
+                .isInstanceOf(KnowledgeInputException.class);
+        assertThatThrownBy(() -> processor.chunks("资料\n\n".repeat(2_001)))
+                .isInstanceOf(KnowledgeInputException.class)
+                .hasMessageContaining("2,000");
+    }
 }

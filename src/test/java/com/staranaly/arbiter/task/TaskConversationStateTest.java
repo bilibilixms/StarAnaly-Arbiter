@@ -97,6 +97,26 @@ class TaskConversationStateTest {
     }
 
     @Test
+    void failedTaskCanStartAnotherRun() {
+        Task task = new Task("退货规则", null);
+        ReflectionTestUtils.setField(task, "id", 42L);
+        task.markRunning();
+        TaskRun failedRun = new TaskRun(task, "第一次提问");
+        ReflectionTestUtils.setField(failedRun, "id", 7L);
+        when(runRepository.findByIdForUpdate(7L)).thenReturn(Optional.of(failedRun));
+        when(taskRepository.findByIdForUpdate(42L)).thenReturn(Optional.of(task));
+        when(runRepository.save(any(TaskRun.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        state.fail(7L, "模型服务不可用");
+        TaskRunStart retry = state.begin(42L, "再次提问");
+
+        assertThat(failedRun.getStatus()).isEqualTo(TaskStatus.FAILED);
+        assertThat(task.getStatus()).isEqualTo(TaskStatus.RUNNING);
+        assertThat(task.getLastError()).isNull();
+        assertThat(retry.context().getLast().content()).isEqualTo("再次提问");
+    }
+
+    @Test
     void savesReplyAndMarksRunStepAndTaskSucceeded() {
         Task task = new Task("分析销售额", null);
         ReflectionTestUtils.setField(task, "id", 42L);
