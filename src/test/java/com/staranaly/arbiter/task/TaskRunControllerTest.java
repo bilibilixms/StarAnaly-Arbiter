@@ -6,6 +6,8 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -60,6 +62,23 @@ class TaskRunControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].stepNumber").value(1))
                 .andExpect(jsonPath("$[0].kind").value("MODEL_CALL"));
+    }
+
+    @Test
+    void listsRunsWithStablePaginationFields() throws Exception {
+        TaskRunResponse run = new TaskRunResponse(7L, 42L, TaskStatus.SUCCEEDED,
+                "用户消息，4 字符", null, Instant.parse("2026-10-21T02:00:00Z"),
+                Instant.parse("2026-10-21T02:00:02Z"));
+        when(service.listRuns(org.mockito.ArgumentMatchers.eq(42L),
+                org.mockito.ArgumentMatchers.any())).thenReturn(
+                        new PageImpl<>(List.of(run), PageRequest.of(0, 20), 1));
+
+        mvc.perform(get("/api/tasks/42/runs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].id").value(7))
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.number").value(0))
+                .andExpect(jsonPath("$.pageable").doesNotExist());
     }
 
     @Test

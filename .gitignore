@@ -40,3 +40,6 @@ replay_pid*
 __pycache__/
 *.pyc
 *.pyo
+
+# 本地数据库备份（包含任务、对话与上传内容）
+/backups/

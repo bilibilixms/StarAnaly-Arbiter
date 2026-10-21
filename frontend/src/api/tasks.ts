@@ -125,8 +125,8 @@ const errorMessages: Record<number, string> = {
   404: '没有找到请求的任务或资料。',
   409: '任务正在执行，请等待当前回复完成。',
   413: '上传文件超过大小限制。',
-  502: '模型服务调用失败，请稍后重试。',
-  503: '模型服务尚未配置，请检查后端环境变量。',
+  502: '无法连接后端服务，请确认服务已启动并重试。',
+  503: '服务暂时不可用，请稍后重试。',
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -139,6 +139,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   }
 
   if (!response.ok) {
+    // 后端的 ProblemDetail 会说明模型错误；代理返回的 502 通常没有该字段。
     const problem = await response.json().catch(() => null) as { detail?: unknown } | null
     const detail = typeof problem?.detail === 'string' ? problem.detail : null
     throw new ApiError(response.status, detail || errorMessages[response.status] || '请求失败，请稍后重试。')

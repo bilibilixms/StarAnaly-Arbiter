@@ -4,7 +4,6 @@ import java.net.URI;
 import java.util.List;
 
 import jakarta.validation.Valid;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
@@ -36,9 +35,9 @@ public class TaskRunController {
     }
 
     @GetMapping
-    public Page<TaskRunResponse> list(@PathVariable Long id,
+    public PageResponse<TaskRunResponse> list(@PathVariable Long id,
             @PageableDefault(size = 20, sort = "id", direction = Sort.Direction.DESC) Pageable pageable) {
-        return service.listRuns(id, pageable);
+        return PageResponse.from(service.listRuns(id, pageable));
     }
 
     @GetMapping("/{runId}")

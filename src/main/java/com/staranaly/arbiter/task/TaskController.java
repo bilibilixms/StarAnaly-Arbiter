@@ -3,7 +3,6 @@ package com.staranaly.arbiter.task;
 import java.net.URI;
 
 import jakarta.validation.Valid;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
@@ -36,7 +35,7 @@ public class TaskController {
     }
 
     @GetMapping
-    public Page<TaskResponse> findAll(@PageableDefault(size = 20, sort = "id") Pageable pageable) {
-        return service.findAll(pageable);
+    public PageResponse<TaskResponse> findAll(@PageableDefault(size = 20, sort = "id") Pageable pageable) {
+        return PageResponse.from(service.findAll(pageable));
     }
 }

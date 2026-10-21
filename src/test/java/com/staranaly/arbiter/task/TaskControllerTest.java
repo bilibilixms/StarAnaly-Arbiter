@@ -89,6 +89,9 @@ class TaskControllerTest {
         mvc.perform(get("/api/tasks"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].id").value(42))
-                .andExpect(jsonPath("$.totalElements").value(1));
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.number").value(0))
+                .andExpect(jsonPath("$.size").value(20))
+                .andExpect(jsonPath("$.pageable").doesNotExist());
     }
 }

@@ -52,7 +52,7 @@
 
    ```bash
    cd frontend
-   npm install
+   npm ci
    npm run dev
    ```
 
@@ -117,6 +117,8 @@ CSV 上传与按月汇总可用 `python3 scripts/verify_csv.py` 验证，接口�
 
 文件边界、跨任务隔离和失败恢复检查见 [第 7 周质量回归说明](docs/week-7-quality.md)，后端运行时可执行 `python3 scripts/verify_quality.py`。
 
+最终验收、部署配置和 MySQL 备份恢复见 [第 8 周交付说明](docs/week-8-delivery.md)。
+
 ## 测试
 
 ```bash
@@ -132,7 +134,7 @@ mvn test
 7～9 周的阶段目标、每周交付和验收口径见 [开发规划说明书](docs/development-plan.md)。
 第 1 周的验证命令、固定演示数据和执行方案见 [基线核对与执行方案](docs/week-1-baseline.md)。
 
-1. 在用户测试机完成第 7 周边界与失败恢复回归，核对运行日志。
-2. 根据回归结果修复问题，再整理第 8 周验收与交付材料。
+1. 在用户测试机执行第 8 周最终回归和备份恢复演练，补测模型失败后的重新提交。
+2. 处理验收阻断问题并记录结果后，标记交付版本。
 
 本项目采用 [MIT License](LICENSE)。
