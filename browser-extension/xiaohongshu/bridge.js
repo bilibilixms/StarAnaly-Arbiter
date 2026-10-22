@@ -2,8 +2,9 @@
   const appSource = 'staranaly-xhs-app'
   const extensionSource = 'staranaly-xhs-extension'
 
-  function isCreationPage() {
-    return location.pathname.replace(/\/$/, '') === '/share/xiaohongshu'
+  function isWorkspacePage() {
+    return ['/share/xiaohongshu', '/share/xiaohongshu/records']
+      .includes(location.pathname.replace(/\/$/, ''))
   }
 
   function reply(kind, requestId, extra = {}) {
@@ -11,7 +12,7 @@
   }
 
   function forwardPublication(event) {
-    if (!isCreationPage() || event?.appOrigin !== location.origin
+    if (!isWorkspacePage() || event?.appOrigin !== location.origin
         || typeof event.id !== 'string' || !Number.isSafeInteger(event.noteId)) return false
     reply('PUBLISHED', event.id, { noteId: event.noteId })
     return true
@@ -27,7 +28,7 @@
   })
 
   window.addEventListener('message', async (event) => {
-    if (event.source !== window || event.origin !== location.origin || !isCreationPage()) return
+    if (event.source !== window || event.origin !== location.origin || !isWorkspacePage()) return
     const message = event.data
     if (!message || message.source !== appSource) return
 
@@ -41,6 +42,7 @@
       return
     }
     if (message.kind !== 'PREPARE' || typeof message.requestId !== 'string') return
+    if (location.pathname.replace(/\/$/, '') !== '/share/xiaohongshu') return
 
     try {
       const result = await chrome.runtime.sendMessage({
@@ -57,5 +59,5 @@
     }
   })
 
-  if (isCreationPage()) reply('READY', undefined, { publicationSync: true })
+  if (isWorkspacePage()) reply('READY', undefined, { publicationSync: true })
 })()

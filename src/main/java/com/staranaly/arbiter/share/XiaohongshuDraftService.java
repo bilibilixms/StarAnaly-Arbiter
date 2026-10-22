@@ -23,7 +23,7 @@ public class XiaohongshuDraftService {
     private static final long MAX_IMAGE_BYTES = 20_000_000L;
     private static final Duration MODEL_TIMEOUT = Duration.ofSeconds(90);
     private static final String SYSTEM_PROMPT = """
-            你是小红书图文笔记助手。仔细识别用户上传的图片，并严格按用户的文字要求创作。
+            你是小红书图文笔记助手。仔细识别用户上传的图片；有额外文字要求时结合要求创作，没有要求时根据图片自然创作。
             只描述图片中能确认的内容；看不清的细节不要猜测，不编造品牌、价格、地点或效果。
             输出简体中文 JSON 对象，且只能包含 title、body、hashtags 三个字段。
             title 是适合图文笔记的简短标题，不超过 20 字；body 是有自然段的发布正文，控制在 700 字以内；hashtags 是 3 至 8 个不带 # 的话题字符串。
@@ -40,8 +40,8 @@ public class XiaohongshuDraftService {
 
     public XiaohongshuDraftResponse generate(MultipartFile image, String requirements) {
         String prompt = requirements == null ? "" : requirements.strip();
-        if (prompt.isEmpty() || prompt.length() > 2000) {
-            throw new XiaohongshuInputException("请填写不超过 2000 字的发布要求。");
+        if (prompt.length() > 2000) {
+            throw new XiaohongshuInputException("文字要求不能超过 2000 字。");
         }
         if (image == null || image.isEmpty() || image.getSize() > MAX_IMAGE_BYTES) {
             throw new XiaohongshuInputException("请选择一张不超过 20 MB 的图片。");
@@ -60,7 +60,9 @@ public class XiaohongshuDraftService {
 
         ModelReply reply = modelGateway.next(List.of(
                 ModelConversationMessage.text("system", SYSTEM_PROMPT),
-                ModelConversationMessage.imagePrompt("发布要求：\n" + prompt, bytes, mimeType)),
+                ModelConversationMessage.imagePrompt(prompt.isEmpty()
+                        ? "请根据这张图片创作一篇自然、真实的小红书图文笔记。"
+                        : "发布要求：\n" + prompt, bytes, mimeType)),
                 false, MODEL_TIMEOUT);
         if (reply.content() == null || !reply.toolCalls().isEmpty()) {
             throw new ModelServiceException(HttpStatus.BAD_GATEWAY, "模型未返回可用的发布文案。");

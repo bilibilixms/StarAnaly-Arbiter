@@ -115,7 +115,9 @@ test('hands the image and text only to the newly opened creator tab', async () =
 test('rejects unrelated pages and invalid drafts', async () => {
   const extension = createExtension()
   const unrelatedPage = { url: 'http://localhost:5173/tasks', tab: { id: 1 } }
+  const recordsPage = { url: 'http://localhost:5173/share/xiaohongshu/records', tab: { id: 1 } }
   assert.equal((await extension.send({ kind: 'PREPARE', draft }, unrelatedPage)).ok, false)
+  assert.equal((await extension.send({ kind: 'PREPARE', draft }, recordsPage)).ok, false)
   assert.equal((await extension.send({ kind: 'PREPARE', draft: { ...draft, title: '字'.repeat(21) } }, app)).ok, false)
   assert.equal(extension.openedTabs.length, 0)
   assert.equal(extension.values.has('pendingXiaohongshuDraft'), false)
@@ -151,6 +153,8 @@ test('records success only after the tracked creator tab attempts publication', 
   assert.equal(completed.ok, true)
   assert.equal(completed.events.length, 1)
   assert.equal(completed.events[0].noteId, draft.noteId)
+  const recordsPage = { url: 'http://localhost:5173/share/xiaohongshu/records', tab: { id: 1 } }
+  assert.equal((await extension.send({ kind: 'GET_COMPLETED' }, recordsPage)).events.length, 1)
   assert.equal(extension.tabMessages[0].id, app.tab.id)
   assert.equal(extension.tabMessages[0].message.kind, 'PUBLISHED')
   assert.equal(extension.activatedTabs.length, 1)
@@ -162,7 +166,7 @@ test('records success only after the tracked creator tab attempts publication', 
   const otherApp = { url: 'http://127.0.0.1:5173/share/xiaohongshu', tab: { id: 2 } }
   assert.equal((await extension.send({ kind: 'GET_COMPLETED' }, otherApp)).events.length, 0)
   assert.equal((await extension.send({ kind: 'ACK_COMPLETED', id: completed.events[0].id }, otherApp)).ok, false)
-  assert.equal((await extension.send({ kind: 'ACK_COMPLETED', id: completed.events[0].id }, app)).ok, true)
+  assert.equal((await extension.send({ kind: 'ACK_COMPLETED', id: completed.events[0].id }, recordsPage)).ok, true)
   assert.equal((await extension.send({ kind: 'GET_COMPLETED' }, app)).events.length, 0)
 })
 

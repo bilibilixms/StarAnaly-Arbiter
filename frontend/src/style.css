@@ -171,6 +171,41 @@ a {
   flex: none;
 }
 
+.site-nav__group {
+  margin-top: 4px;
+}
+
+.site-nav__group-title {
+  display: flex;
+  min-height: 38px;
+  margin: 0;
+  padding: 0 14px;
+  align-items: center;
+  gap: 12px;
+  color: #c54e6b;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.site-nav--nested {
+  margin-left: 23px;
+  padding-left: 12px;
+  border-left: 1px solid #f2c8d3;
+}
+
+.site-nav--nested .site-nav__link {
+  min-height: 38px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.site-nav--nested .site-nav__link:hover,
+.site-nav--nested .site-nav__link.router-link-active {
+  background: linear-gradient(90deg, #ffe9ee, #edf7ff);
+  color: #b83a56;
+  box-shadow: inset 3px 0 #ec6d85;
+}
+
 .workspace-area {
   min-width: 0;
   background:
@@ -1120,12 +1155,6 @@ h1 {
   font-size: 21px;
 }
 
-.share-compose .field input[type="file"] {
-  padding: 10px;
-  color: var(--ink-soft);
-  font-size: 13px;
-}
-
 .share-image-preview {
   display: flex;
   align-items: center;
@@ -1379,6 +1408,200 @@ h1 {
 .share-library__actions {
   flex: none;
   justify-content: flex-end;
+}
+
+/* Xiaohongshu adds a warm red accent to the StarAnaly sky and pink palette. */
+.xhs-page {
+  --xhs-red: #e84f68;
+  --xhs-deep: #b8324f;
+  --xhs-wash: #fff2f4;
+  --xhs-line: #f4cbd4;
+}
+
+.xhs-heading {
+  border-color: #eed6e7;
+  background: linear-gradient(112deg, #e0f2ff 0%, #f7faff 48%, #ffe6ea 100%);
+}
+
+.xhs-heading::after {
+  color: rgb(232 79 104 / 45%);
+}
+
+.xhs-heading .eyebrow,
+.xhs-page .share-result__heading .eyebrow,
+.xhs-page .share-library__heading .eyebrow {
+  color: var(--xhs-deep);
+}
+
+.xhs-page .share-compose,
+.xhs-page .share-result,
+.xhs-page .share-library {
+  border-color: #f1dce5;
+  background: linear-gradient(160deg, #fff 0%, #fff 70%, #fff9fb 100%);
+}
+
+.xhs-page .share-compose h2,
+.xhs-page .share-result h2,
+.xhs-page .share-library__heading h2 {
+  color: #9b3959;
+}
+
+.xhs-page .share-library {
+  margin-top: 0;
+}
+
+.xhs-page .button:not(.button--secondary) {
+  border-color: var(--xhs-red);
+  background: linear-gradient(135deg, #f45d73, #d94361);
+  box-shadow: 0 6px 15px rgb(232 79 104 / 18%);
+}
+
+.xhs-page .button:not(.button--secondary):hover:not(:disabled) {
+  border-color: var(--xhs-deep);
+  background: linear-gradient(135deg, #e84f68, #be3653);
+}
+
+.xhs-page .button--secondary {
+  border-color: var(--xhs-line);
+  color: var(--xhs-deep);
+}
+
+.xhs-page .button--secondary:hover:not(:disabled) {
+  border-color: #e9a9b9;
+  background: var(--xhs-wash);
+}
+
+.xhs-page .page-heading .button--secondary {
+  border-color: #efb3c1;
+  background: #fff7fa;
+  color: var(--xhs-deep);
+  box-shadow: 0 6px 16px rgb(232 79 104 / 12%);
+}
+
+.xhs-upload-field .field-label {
+  display: block;
+  margin-bottom: 9px;
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.xhs-upload-field .xhs-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  opacity: 0;
+}
+
+.xhs-upload-field .xhs-upload-control {
+  display: flex;
+  min-height: 164px;
+  margin-bottom: 0;
+  padding: 20px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 9px;
+  border: 1.5px dashed #eaa4b5;
+  border-radius: 16px;
+  background: linear-gradient(145deg, #f0f9ff 0%, #fff3f6 100%);
+  cursor: pointer;
+  transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.xhs-upload-field .xhs-upload-control:hover {
+  border-color: var(--xhs-red);
+  box-shadow: 0 8px 22px rgb(232 79 104 / 10%);
+  transform: translateY(-1px);
+}
+
+.xhs-upload-field .xhs-file-input:focus-visible + .xhs-upload-control {
+  outline: 3px solid var(--pink);
+  outline-offset: 3px;
+}
+
+.xhs-upload-field .xhs-file-input:disabled + .xhs-upload-control {
+  opacity: 0.56;
+  cursor: not-allowed;
+}
+
+.xhs-upload-field .xhs-file-input:disabled + .xhs-upload-control:hover {
+  box-shadow: none;
+  transform: none;
+}
+
+.xhs-upload-control__icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 11px;
+  background: linear-gradient(135deg, #91c9ed, #f2a5b8);
+  color: #fff;
+  font-size: 21px;
+}
+
+.xhs-upload-control__button {
+  display: inline-flex;
+  min-height: 36px;
+  padding: 0 19px;
+  align-items: center;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #f45d73, #df4a67);
+  box-shadow: 0 5px 13px rgb(232 79 104 / 18%);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.xhs-upload-control__hint {
+  color: #7c8299;
+  font-size: 12px;
+  text-align: center;
+}
+
+.xhs-optional {
+  margin-left: 5px;
+  color: #a77c91;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.xhs-page .share-result__empty {
+  border-color: #e9bccb;
+  background: linear-gradient(145deg, #eef9ff, #fff0f4);
+}
+
+.xhs-page .share-result__empty span,
+.xhs-page .share-library__tabs button.is-active {
+  color: var(--xhs-deep);
+}
+
+.xhs-page .share-library__tabs button.is-active {
+  border-bottom-color: var(--xhs-red);
+}
+
+.xhs-records-status {
+  margin: 20px 0 0;
+  padding: 11px 14px;
+  border: 1px solid var(--xhs-line);
+  border-radius: 10px;
+  background: var(--xhs-wash);
+  color: var(--xhs-deep);
+  font-size: 13px;
+}
+
+.xhs-page .share-library__item {
+  border-color: #f2e0e8;
+  background: linear-gradient(110deg, #fff, #fff7fa 70%, #f2faff);
+}
+
+.xhs-inline-link {
+  color: var(--xhs-deep);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 @media (max-width: 980px) {

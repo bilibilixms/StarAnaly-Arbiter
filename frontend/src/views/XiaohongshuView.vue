@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { deleteXiaohongshuNote, generateXiaohongshuDraft, listXiaohongshuNotes,
   loadXiaohongshuImage, markXiaohongshuNotePublished, saveXiaohongshuNote,
   type XiaohongshuDraft, type XiaohongshuNote } from '@/api/sharing'
@@ -9,6 +10,9 @@ const supportedTypes = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/w
 const publishUrl = 'https://creator.xiaohongshu.com/publish/publish?target=image'
 const appSource = 'staranaly-xhs-app'
 const extensionSource = 'staranaly-xhs-extension'
+const route = useRoute()
+const router = useRouter()
+const isRecordsPage = computed(() => route.name === 'share-xiaohongshu-records')
 
 const image = ref<File | null>(null)
 const imageUrl = ref('')
@@ -144,6 +148,7 @@ async function openNote(note: XiaohongshuNote) {
     tagsText.value = note.tagsText
     currentNote.value = note
     imageChanged.value = false
+    if (isRecordsPage.value) await router.push({ name: 'share-xiaohongshu' })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   } catch (cause) {
     libraryError.value = cause instanceof Error ? cause.message : '打开文案失败。'
@@ -159,8 +164,8 @@ async function saveNote(): Promise<XiaohongshuNote | null> {
   const title = draft.value.title.trim()
   const body = draft.value.body.trim()
   const tags = tagsText.value.trim()
-  if (!requirements.value.trim() || requirements.value.trim().length > 2000) {
-    error.value = '请填写不超过 2000 字的发布要求。'
+  if (requirements.value.trim().length > 2000) {
+    error.value = '文字要求不能超过 2000 字。'
     return null
   }
   if (!title || Array.from(title).length > 20) {
@@ -230,8 +235,8 @@ async function generate() {
     return
   }
   const request = requirements.value.trim()
-  if (!request || request.length > 2000) {
-    error.value = '请填写不超过 2000 字的发布要求。'
+  if (request.length > 2000) {
+    error.value = '文字要求不能超过 2000 字。'
     return
   }
   generating.value = true
@@ -276,13 +281,14 @@ async function recordAutomaticPublication(eventId: string, noteId: number) {
   try {
     const published = await markXiaohongshuNotePublished(noteId)
     if (currentNote.value?.id === noteId) currentNote.value = published
-    else if (!currentNote.value && !draft.value) await openNote(published)
+    else if (!isRecordsPage.value && !currentNote.value && !draft.value) await openNote(published)
     activeTab.value = 'PUBLISHED'
     publishStatus.value = '已检测到小红书发布成功，文案已自动移入“已发布”。'
     await refreshNotes()
     window.postMessage({ source: appSource, kind: 'ACK_PUBLICATION', eventId }, location.origin)
   } catch (cause) {
     libraryError.value = cause instanceof Error ? cause.message : '自动更新发布记录失败；请刷新页面重试。'
+    if (!isRecordsPage.value) publishStatus.value = libraryError.value
   } finally {
     processingPublicationEvents.delete(eventId)
   }
@@ -407,24 +413,30 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section class="page-heading">
+  <div class="xhs-page">
+  <section class="page-heading xhs-heading">
     <div>
       <p class="eyebrow">分享空间 / 小红书</p>
-      <h1>小红书图文创作</h1>
-      <p class="page-description">上传图片并告诉星析你的想法，生成可编辑的发布文案。</p>
+      <h1>{{ isRecordsPage ? '创作记录' : '小红书图文创作' }}</h1>
+      <p class="page-description">{{ isRecordsPage ? '保存的草稿与已发布的笔记，都在这里。' : '上传图片即可生成发布文案；也可以补充你的创作想法。' }}</p>
     </div>
-    <button class="button button--secondary" type="button" :disabled="generating || preparingPublish || saving || loadingNote" @click="startNew">新建图文</button>
+    <button v-if="!isRecordsPage" class="button button--secondary" type="button" :disabled="generating || preparingPublish || saving || loadingNote" @click="startNew">新建图文</button>
+    <RouterLink v-else class="button button--secondary" to="/share/xiaohongshu">去图文创作</RouterLink>
   </section>
 
-  <div class="share-layout">
+  <div v-if="!isRecordsPage" class="share-layout">
     <section class="panel share-compose" aria-label="生成发布文案">
       <h2>创作素材</h2>
       <form @submit.prevent="generate">
-        <div class="field">
-          <label for="share-image">上传图片 <span class="required">*</span></label>
-          <input id="share-image" type="file" accept="image/jpeg,image/png,image/gif,image/webp"
+        <div class="field xhs-upload-field">
+          <span class="field-label">上传图片 <span class="required">*</span></span>
+          <input id="share-image" class="xhs-file-input" type="file" aria-label="上传图片" accept="image/jpeg,image/png,image/gif,image/webp"
             :disabled="generating || preparingPublish || isPublished || saving" @change="selectImage" />
-          <p class="field-hint">支持 JPEG、PNG、GIF、WebP，单张最大 20 MB。</p>
+          <label for="share-image" class="xhs-upload-control">
+            <span class="xhs-upload-control__icon" aria-hidden="true">✦</span>
+            <span class="xhs-upload-control__button">{{ image ? '更换图片' : '选择图片' }}</span>
+            <span class="xhs-upload-control__hint">支持 JPEG、PNG、GIF、WebP · 最大 20 MB</span>
+          </label>
         </div>
         <div v-if="image && imageUrl" class="share-image-preview">
           <img :src="imageUrl" :alt="`待创作图片：${image.name}`" />
@@ -435,11 +447,11 @@ onUnmounted(() => {
           </div>
         </div>
         <div class="field">
-          <label for="share-requirements">文字要求 <span class="required">*</span></label>
+          <label for="share-requirements">文字要求 <span class="xhs-optional">选填</span></label>
           <textarea id="share-requirements" v-model="requirements" rows="7" maxlength="2000"
             :disabled="generating || preparingPublish || isPublished || saving" placeholder="例如：根据图片写一篇周末探店笔记，语气轻松，突出环境和拍照氛围。"
             @input="edited"></textarea>
-          <p class="field-hint">模型会识别图片，再结合你的要求生成标题、正文和话题。最多 2000 字。</p>
+          <p class="field-hint">留空时会根据图片生成；填写后会结合你的想法创作。最多 2000 字。</p>
         </div>
         <p v-if="error" class="inline-error" role="alert">{{ error }}</p>
         <div class="form-actions">
@@ -460,7 +472,7 @@ onUnmounted(() => {
       </div>
       <div v-if="!draft" class="share-result__empty">
         <span aria-hidden="true">✦</span>
-        <p>{{ generating ? '正在根据图片和文字要求创作…' : '生成后将在这里看到图片、标题和正文。' }}</p>
+        <p>{{ generating ? '正在识别图片并创作…' : '生成后将在这里看到图片、标题和正文。' }}</p>
       </div>
       <template v-else>
         <div class="share-note">
@@ -491,7 +503,7 @@ onUnmounted(() => {
             :disabled="saving || preparingPublish || isDirty" @click="markPublished">已在小红书发布</button>
         </div>
         <p v-if="error" class="inline-error" role="alert">{{ error }}</p>
-        <p v-if="saveStatus" class="field-hint" role="status">{{ saveStatus }}</p>
+        <p v-if="saveStatus" class="field-hint" role="status">{{ saveStatus }} <RouterLink to="/share/xiaohongshu/records" class="xhs-inline-link">查看创作记录</RouterLink></p>
         <p v-if="copyStatus" class="field-hint" role="status">{{ copyStatus }}</p>
         <p v-if="publishStatus" class="field-hint" role="status">{{ publishStatus }}</p>
         <p v-if="currentNote && isDirty" class="field-hint">修改后请先保存，再去发布。</p>
@@ -520,7 +532,7 @@ onUnmounted(() => {
     </section>
   </div>
 
-  <section class="panel share-library" aria-label="我的小红书文案">
+  <section v-else class="panel share-library" aria-label="我的小红书文案">
     <div class="share-library__heading">
       <div>
         <p class="eyebrow">我的文案</p>
@@ -528,6 +540,7 @@ onUnmounted(() => {
       </div>
       <button class="text-button" type="button" :disabled="loadingNotes" @click="refreshNotes">刷新列表</button>
     </div>
+    <p v-if="publishStatus" class="xhs-records-status" role="status">{{ publishStatus }}</p>
     <div class="share-library__tabs" role="tablist" aria-label="文案状态">
       <button type="button" role="tab" :aria-selected="activeTab === 'DRAFT'" :class="{ 'is-active': activeTab === 'DRAFT' }"
         @click="activeTab = 'DRAFT'">已保存 {{ savedNotes.length }}</button>
@@ -556,4 +569,5 @@ onUnmounted(() => {
       </li>
     </ul>
   </section>
+  </div>
 </template>

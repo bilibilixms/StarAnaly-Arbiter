@@ -102,8 +102,8 @@ public class XiaohongshuNoteService {
         String heading = title == null ? "" : title.strip();
         String article = body == null ? "" : body.strip();
         String tags = tagsText == null ? "" : tagsText.strip();
-        if (prompt.isEmpty() || prompt.length() > 2000) {
-            throw new XiaohongshuInputException("请填写不超过 2000 字的发布要求。");
+        if (prompt.length() > 2000) {
+            throw new XiaohongshuInputException("文字要求不能超过 2000 字。");
         }
         if (heading.isEmpty() || heading.codePointCount(0, heading.length()) > 20) {
             throw new XiaohongshuInputException("标题需为 1 至 20 字。");

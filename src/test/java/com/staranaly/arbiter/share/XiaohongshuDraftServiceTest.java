@@ -59,6 +59,23 @@ class XiaohongshuDraftServiceTest {
     }
 
     @Test
+    void generatesFromImageWithoutTextRequirements() {
+        MultipartFile image = new MockMultipartFile("image", "photo.jpg", "image/jpeg",
+                new byte[] {(byte) 0xff, (byte) 0xd8, (byte) 0xff, 0x00});
+        when(gateway.next(anyList(), eq(false), any(Duration.class)))
+                .thenReturn(new ModelReply("""
+                        {"title":"图片日记","body":"记录眼前的画面。","hashtags":["生活记录"]}
+                        """, List.of()));
+
+        assertThat(service.generate(image, "   ").title()).isEqualTo("图片日记");
+        verify(gateway).next(org.mockito.ArgumentMatchers.argThat(messages -> {
+            Object content = messages.get(1).toRequest().get("content");
+            if (!(content instanceof List<?> parts) || !(parts.get(0) instanceof Map<?, ?> text)) return false;
+            return text.get("text").toString().contains("根据这张图片创作");
+        }), eq(false), any(Duration.class));
+    }
+
+    @Test
     void rejectsOversizedAndNonImageFilesBeforeCallingModel() {
         MultipartFile oversized = mock(MultipartFile.class);
         when(oversized.isEmpty()).thenReturn(false);

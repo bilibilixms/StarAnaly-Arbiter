@@ -84,4 +84,23 @@ test('detects the extension and acknowledges a publish handoff from the creation
   })
   assert.equal(sentToPage.at(-1).message.kind, 'PUBLISHED')
   assert.equal(sentToPage.at(-1).message.noteId, 43)
+
+  location.pathname = '/share/xiaohongshu/records'
+  runtimeListener({ kind: 'PUBLISHED', event: { id: 'event-2', noteId: 44, appOrigin: location.origin } },
+    null, (response) => { deliveryResponse = response })
+  assert.equal(deliveryResponse.ok, true)
+  assert.equal(sentToPage.at(-1).message.noteId, 44)
+  await messageListener({
+    source: window,
+    origin: location.origin,
+    data: { source: 'staranaly-xhs-app', kind: 'ACK_PUBLICATION', eventId: 'event-2' },
+  })
+  assert.equal(sentToBackground.at(-1).kind, 'ACK_COMPLETED')
+  const sentCount = sentToBackground.length
+  await messageListener({
+    source: window,
+    origin: location.origin,
+    data: { source: 'staranaly-xhs-app', kind: 'PREPARE', requestId: 'from-records', draft },
+  })
+  assert.equal(sentToBackground.length, sentCount)
 })

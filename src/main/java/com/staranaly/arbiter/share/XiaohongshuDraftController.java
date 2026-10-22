@@ -28,7 +28,7 @@ public class XiaohongshuDraftController {
 
     @PostMapping(path = "/generate", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public XiaohongshuDraftResponse generate(@RequestParam("image") MultipartFile image,
-            @RequestParam("requirements") String requirements) {
+            @RequestParam(value = "requirements", defaultValue = "") String requirements) {
         return service.generate(image, requirements);
     }
 
@@ -51,7 +51,7 @@ public class XiaohongshuDraftController {
 
     @PostMapping(path = "/notes", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public XiaohongshuNoteResponse save(@RequestParam MultipartFile image,
-            @RequestParam String requirements, @RequestParam String title,
+            @RequestParam(value = "requirements", defaultValue = "") String requirements, @RequestParam String title,
             @RequestParam String body, @RequestParam(defaultValue = "") String tagsText) {
         return noteService.create(image, requirements, title, body, tagsText);
     }
@@ -59,7 +59,7 @@ public class XiaohongshuDraftController {
     @PutMapping(path = "/notes/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public XiaohongshuNoteResponse update(@PathVariable long id,
             @RequestParam(required = false) MultipartFile image,
-            @RequestParam String requirements, @RequestParam String title,
+            @RequestParam(value = "requirements", defaultValue = "") String requirements, @RequestParam String title,
             @RequestParam String body, @RequestParam(defaultValue = "") String tagsText) {
         return noteService.update(id, image, requirements, title, body, tagsText);
     }

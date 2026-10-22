@@ -38,9 +38,10 @@ class XiaohongshuNoteServiceTest {
         MockMultipartFile replacement = new MockMultipartFile("image", "new.png", "image/png",
                 new byte[] {(byte) 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a});
 
-        service.update(1L, replacement, "新要求", "新标题", "新正文", "#旅行");
+        service.update(1L, replacement, "", "新标题", "新正文", "#旅行");
 
         assertThat(note.getTitle()).isEqualTo("新标题");
+        assertThat(note.getRequirements()).isEmpty();
         assertThat(note.getTagsText()).isEqualTo("#旅行");
         assertThat(note.getImageName()).isEqualTo("new.png");
         assertThat(storedImage.getImageData()).isEqualTo(replacement.getBytes());

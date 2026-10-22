@@ -43,14 +43,20 @@ const spaceLabel = computed(() => typeof route.meta.space === 'string' ? route.m
           </svg>
           <span>抖音</span>
         </RouterLink>
-        <RouterLink class="site-nav__link" to="/share/xiaohongshu">
+      </nav>
+      <div class="site-nav__group" aria-label="小红书">
+        <p class="site-nav__group-title">
           <svg class="site-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <rect x="4" y="3" width="16" height="18" rx="3" />
             <path d="M8 8h8M8 12h8M8 16h5" />
           </svg>
           <span>小红书</span>
-        </RouterLink>
-      </nav>
+        </p>
+        <nav class="site-nav site-nav--nested" aria-label="小红书导航">
+          <RouterLink class="site-nav__link" to="/share/xiaohongshu" exact-active-class="router-link-active">图文创作</RouterLink>
+          <RouterLink class="site-nav__link" to="/share/xiaohongshu/records">创作记录</RouterLink>
+        </nav>
+      </div>
     </aside>
 
     <div class="workspace-area">

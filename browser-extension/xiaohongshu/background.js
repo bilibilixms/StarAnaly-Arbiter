@@ -11,7 +11,8 @@ function isAppSender(sender) {
   try {
     const url = new URL(sender.url)
     return (url.hostname === 'localhost' || url.hostname === '127.0.0.1')
-      && url.pathname.replace(/\/$/, '') === '/share/xiaohongshu'
+      && ['/share/xiaohongshu', '/share/xiaohongshu/records']
+        .includes(url.pathname.replace(/\/$/, ''))
       && sender.tab?.id != null
   } catch {
     return false
@@ -44,7 +45,9 @@ function validateDraft(draft) {
 }
 
 async function prepareDraft(draft, sender) {
-  if (!isAppSender(sender) || !validateDraft(draft)) {
+  if (!isAppSender(sender)
+      || new URL(sender.url).pathname.replace(/\/$/, '') !== '/share/xiaohongshu'
+      || !validateDraft(draft)) {
     return { ok: false, error: '图片或文案无效，请返回星析重新选择。' }
   }
 
