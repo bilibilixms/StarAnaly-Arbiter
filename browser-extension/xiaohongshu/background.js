@@ -6,6 +6,7 @@ const EXPIRY_ALARM = 'pendingXiaohongshuDraftExpiry'
 const MAX_AGE_MS = 30 * 60 * 1000
 const MAX_IMAGE_BYTES = 20_000_000
 const MAX_PUBLICATION_AGE_MS = 24 * 60 * 60 * 1000
+const publishingTabs = new Set()
 
 function isAppSender(sender) {
   try {
@@ -106,56 +107,53 @@ async function removePublication(tabId) {
   await chrome.storage.local.set({ [PUBLICATIONS_KEY]: publications })
 }
 
-async function publishAttempted(sender) {
+async function publishSucceeded(sender, signal) {
+  if (publishingTabs.has(sender.tab?.id)) return { ok: false }
   const publication = await getPublication(sender)
-  if (!publication) return { ok: false }
-  const stored = await chrome.storage.local.get(PUBLICATIONS_KEY)
-  await chrome.storage.local.set({
-    [PUBLICATIONS_KEY]: {
-      ...stored[PUBLICATIONS_KEY],
-      [sender.tab.id]: { ...publication, attemptedAt: Date.now(), attemptUrl: sender.url },
-    },
-  })
-  return { ok: true }
-}
-
-async function publishSucceeded(sender) {
-  const publication = await getPublication(sender)
-  if (!publication?.attemptedAt || Date.now() - publication.attemptedAt > 10 * 60 * 1000) {
+  const creatorUrl = new URL(sender.url)
+  const isSuccessPage = /^\/publish\/success(?:\/|$)/.test(creatorUrl.pathname)
+    || (creatorUrl.pathname.startsWith('/publish/') && creatorUrl.searchParams.get('published') === 'true')
+  if (!publication?.filledAt || Date.now() - publication.filledAt > MAX_PUBLICATION_AGE_MS
+      || (!isSuccessPage && signal !== 'success_text')) {
     return { ok: false }
   }
-  const id = crypto.randomUUID()
-  const event = { id, noteId: publication.noteId, appOrigin: publication.appOrigin }
-  const stored = await chrome.storage.local.get(COMPLETED_KEY)
-  await chrome.storage.local.set({
-    [COMPLETED_KEY]: { ...stored[COMPLETED_KEY], [id]: event },
-  })
-  await removePublication(sender.tab.id)
-  let delivered = false
+  publishingTabs.add(sender.tab.id)
   try {
-    const response = await chrome.tabs.sendMessage(publication.appTabId, { kind: 'PUBLISHED', event })
-    delivered = response?.ok === true
-  } catch {
-    // The original tab may have been closed or navigated away.
-  }
-  if (delivered) {
+    const id = crypto.randomUUID()
+    const event = { id, noteId: publication.noteId, appOrigin: publication.appOrigin }
+    const stored = await chrome.storage.local.get(COMPLETED_KEY)
+    await chrome.storage.local.set({
+      [COMPLETED_KEY]: { ...stored[COMPLETED_KEY], [id]: event },
+    })
+    await removePublication(sender.tab.id)
+    let delivered = false
     try {
-      const appTab = await chrome.tabs.update(publication.appTabId, { active: true })
-      await chrome.windows.update(appTab.windowId, { focused: true })
-      return { ok: true }
+      const response = await chrome.tabs.sendMessage(publication.appTabId, { kind: 'PUBLISHED', event })
+      delivered = response?.ok === true
     } catch {
-      // The app tab may have disappeared while switching back.
+      // The original tab may have been closed or navigated away.
     }
+    if (delivered) {
+      try {
+        const appTab = await chrome.tabs.update(publication.appTabId, { active: true })
+        await chrome.windows.update(appTab.windowId, { focused: true })
+        return { ok: true }
+      } catch {
+        // The app tab may have disappeared while switching back.
+      }
+    }
+    const newTab = { url: `${publication.appOrigin}/share/xiaohongshu`, active: true }
+    if (Number.isInteger(sender.tab.windowId)) newTab.windowId = sender.tab.windowId
+    try {
+      const appTab = await chrome.tabs.create(newTab)
+      await chrome.windows.update(appTab.windowId, { focused: true })
+    } catch {
+      // The publication event remains queued for the next visit to StarAnaly.
+    }
+    return { ok: true }
+  } finally {
+    publishingTabs.delete(sender.tab.id)
   }
-  const newTab = { url: `${publication.appOrigin}/share/xiaohongshu`, active: true }
-  if (Number.isInteger(sender.tab.windowId)) newTab.windowId = sender.tab.windowId
-  try {
-    const appTab = await chrome.tabs.create(newTab)
-    await chrome.windows.update(appTab.windowId, { focused: true })
-  } catch {
-    // The publication event remains queued for the next visit to StarAnaly.
-  }
-  return { ok: true }
 }
 
 async function getCompleted(sender) {
@@ -193,6 +191,15 @@ async function clearDraft(sender) {
   if (!isCreatorSender(sender)) return { ok: false }
   const stored = await chrome.storage.local.get(DRAFT_KEY)
   if (stored[DRAFT_KEY]?.targetTabId !== sender.tab.id) return { ok: false }
+  const storedPublications = await chrome.storage.local.get(PUBLICATIONS_KEY)
+  const publication = storedPublications[PUBLICATIONS_KEY]?.[sender.tab.id]
+  if (!publication) return { ok: false, error: '未找到对应的发布跟踪记录。' }
+  await chrome.storage.local.set({
+    [PUBLICATIONS_KEY]: {
+      ...storedPublications[PUBLICATIONS_KEY],
+      [sender.tab.id]: { ...publication, filledAt: Date.now() },
+    },
+  })
   await chrome.storage.local.remove(DRAFT_KEY)
   await chrome.alarms.clear(EXPIRY_ALARM)
   return { ok: true }
@@ -217,10 +224,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   else if (message?.kind === 'GET_DRAFT') action = getDraft(sender)
   else if (message?.kind === 'CLEAR_DRAFT') action = clearDraft(sender)
   else if (message?.kind === 'GET_PUBLICATION') action = getPublication(sender).then((publication) =>
-    ({ ok: !!publication, attemptedAt: publication?.attemptedAt || null,
-      attemptUrl: publication?.attemptUrl || null }))
-  else if (message?.kind === 'PUBLISH_ATTEMPTED') action = publishAttempted(sender)
-  else if (message?.kind === 'PUBLISH_SUCCEEDED') action = publishSucceeded(sender)
+    ({ ok: !!publication, filledAt: publication?.filledAt || null }))
+  else if (message?.kind === 'PUBLISH_SUCCEEDED') action = publishSucceeded(sender, message.signal)
   else if (message?.kind === 'GET_COMPLETED') action = getCompleted(sender)
   else if (message?.kind === 'ACK_COMPLETED') action = acknowledgeCompleted(message.id, sender)
   else return false

@@ -7,11 +7,10 @@
   let panel
   let statusText
   let retryButton
-  let publicationAttemptAt = 0
-  let publicationAttemptUrl = ''
+  let publicationFilledAt = 0
   let reportingSuccess = false
-  let attemptRegistration = Promise.resolve(true)
-  const { isPublishButtonText, isSuccessText } = globalThis.xiaohongshuPublishSignal
+  let publicationReported = false
+  const { isSuccessText, isSuccessUrl } = globalThis.xiaohongshuPublishSignal
   const { fillTopics } = globalThis.xiaohongshuTopicFill
 
   function isPublishPage() {
@@ -30,16 +29,15 @@
       && candidate.children.length === 0 && isSuccessText(candidate.textContent))
   }
 
-  async function reportSuccess() {
-    if (reportingSuccess) return
+  async function reportSuccess(signal) {
+    if (reportingSuccess || publicationReported) return
     reportingSuccess = true
     try {
-      if (!await attemptRegistration) {
-        reportingSuccess = false
-        return
+      const response = await chrome.runtime.sendMessage({ kind: 'PUBLISH_SUCCEEDED', signal })
+      if (response?.ok) {
+        publicationReported = true
+        showStatus('检测到小红书发布成功，正在返回星析。')
       }
-      const response = await chrome.runtime.sendMessage({ kind: 'PUBLISH_SUCCEEDED' })
-      if (response?.ok) showStatus('检测到小红书发布成功，已通知星析更新发布记录。')
       else reportingSuccess = false
     } catch {
       reportingSuccess = false
@@ -49,34 +47,24 @@
   async function watchPublication() {
     const session = await chrome.runtime.sendMessage({ kind: 'GET_PUBLICATION' }).catch(() => null)
     if (!session?.ok) return
-    publicationAttemptAt = session.attemptedAt || 0
-    publicationAttemptUrl = session.attemptUrl || ''
-    document.addEventListener('click', (event) => {
-      if (!isPublishPage()) return
-      const button = event.target instanceof Element
-        ? event.target.closest('button,[role="button"]') : null
-      if (!button || !visible(button) || button.disabled || !isPublishButtonText(button.textContent)) return
-      publicationAttemptAt = Date.now()
-      publicationAttemptUrl = location.href
-      attemptRegistration = chrome.runtime.sendMessage({ kind: 'PUBLISH_ATTEMPTED' })
-        .then((response) => {
-          if (!response?.ok) publicationAttemptAt = 0
-          return !!response?.ok
-        }).catch(() => {
-          publicationAttemptAt = 0
-          return false
-        })
-    }, true)
+    publicationFilledAt = session.filledAt || 0
     const observer = new MutationObserver((mutations) => {
-      if (!publicationAttemptAt || Date.now() - publicationAttemptAt > 10 * 60 * 1000 || reportingSuccess) return
+      if (!publicationFilledAt || reportingSuccess || publicationReported) return
       if (mutations.some((mutation) => mutation.type === 'characterData'
         ? hasSuccessSignal(mutation.target)
-        : [...mutation.addedNodes].some(hasSuccessSignal))) void reportSuccess()
+        : [...mutation.addedNodes].some(hasSuccessSignal))) void reportSuccess('success_text')
     })
     observer.observe(document.documentElement, { subtree: true, childList: true, characterData: true })
-    if (publicationAttemptAt && publicationAttemptUrl && location.href !== publicationAttemptUrl
-        && Date.now() - publicationAttemptAt <= 10 * 60 * 1000
-        && hasSuccessSignal(document.documentElement)) void reportSuccess()
+    const checkSuccessPage = () => {
+      if (publicationFilledAt && isSuccessUrl(location.href) && !reportingSuccess) {
+        void reportSuccess('success_page')
+      }
+    }
+    checkSuccessPage()
+    const successCheck = setInterval(() => {
+      if (publicationReported) clearInterval(successCheck)
+      else checkSuccessPage()
+    }, 500)
   }
 
   function showStatus(message, canRetry = false) {
@@ -257,7 +245,9 @@
           throw error
         }
       }
-      await chrome.runtime.sendMessage({ kind: 'CLEAR_DRAFT' })
+      const cleared = await chrome.runtime.sendMessage({ kind: 'CLEAR_DRAFT' })
+      if (!cleared?.ok) throw new Error('扩展未能保存发布跟踪状态，请重试填入。')
+      publicationFilledAt = Date.now()
       draft.imageData = ''
       finished = true
       showStatus('图片、标题、正文和有效话题已填入。请逐项检查，然后由你点击小红书的发布按钮。')

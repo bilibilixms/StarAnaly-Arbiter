@@ -57,9 +57,9 @@ const processingPublicationEvents = new Set<string>()
 
 const imageSize = computed(() => image.value ? `${(image.value.size / 1_000_000).toFixed(1)} MB` : '')
 const isPublished = computed(() => currentNote.value?.status === 'PUBLISHED')
-const topicExtensionReady = computed(() => {
+const publishExtensionReady = computed(() => {
   const match = /^(\d+)\.(\d+)\./.exec(extensionVersion.value)
-  return !!match && (Number(match[1]) > 0 || Number(match[2]) >= 4)
+  return !!match && (Number(match[1]) > 0 || Number(match[2]) >= 5)
 })
 const isDirty = computed(() => {
   const note = currentNote.value
@@ -456,8 +456,8 @@ function readImage(file: File): Promise<string> {
 async function publishWithExtension() {
   if (!draft.value || !image.value || preparingPublish.value || saving.value || generating.value) return
   publishStatus.value = ''
-  if (!topicExtensionReady.value) {
-    publishStatus.value = '请在 Edge 扩展管理页重新加载星析发布助手 0.4.0，再刷新此页面。'
+  if (!publishExtensionReady.value) {
+    publishStatus.value = '请在 Edge 扩展管理页重新加载星析发布助手 0.5.0，再刷新此页面。'
     return
   }
   const topics = parseTopics()
@@ -652,7 +652,7 @@ onUnmounted(() => {
             @click="saveNote">{{ saving ? '正在保存…' : currentNote ? '保存修改' : '保存当前文案' }}</button>
           <button class="button button--quiet" type="button" @click="copyTitle">复制标题</button>
           <button class="button button--quiet" type="button" @click="copyBody">复制正文与话题</button>
-          <button v-if="!isPublished && topicExtensionReady" class="button" type="button" :disabled="preparingPublish || saving"
+          <button v-if="!isPublished && publishExtensionReady" class="button" type="button" :disabled="preparingPublish || saving"
             @click="publishWithExtension">{{ preparingPublish ? '正在交给扩展…' : '去发布（自动填入）' }}</button>
           <button v-else-if="!isPublished && extensionReady" class="button" type="button" disabled>重新加载扩展后自动填入</button>
           <button v-else-if="!isPublished && canShareImage" class="button" type="button" :disabled="saving" @click="shareViaDevice">去发布（系统分享）</button>
@@ -668,10 +668,10 @@ onUnmounted(() => {
         <p v-if="copyStatus" class="field-hint" role="status">{{ copyStatus }}</p>
         <p v-if="publishStatus" class="field-hint" role="status">{{ publishStatus }}</p>
         <p v-if="currentNote && isDirty" class="field-hint">修改后请先保存，再去发布。</p>
-        <p v-if="!isPublished" class="field-hint">{{ topicExtensionReady
+        <p v-if="!isPublished" class="field-hint">{{ publishExtensionReady
           ? '去发布时会先保存当前文案。扩展填入内容后请亲自点击小红书的发布按钮；检测到发布成功提示后，文案会自动移入“已发布”。'
           : extensionReady
-            ? '当前扩展版本尚未支持有效话题自动填入。请在扩展管理页重新加载扩展，再刷新星析页面。'
+            ? '当前扩展版本尚未支持发布成功后自动同步与返回。请在扩展管理页重新加载扩展，再刷新星析页面。'
           : canShareImage
             ? '系统分享会尝试发送原图、标题和正文；请选择小红书，并检查实际带入的内容。'
             : '网页版无法自动填入图片和文案；点击后会复制正文与话题并打开小红书，请手动上传原图、粘贴正文和标题。' }}</p>

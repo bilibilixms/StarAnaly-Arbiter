@@ -140,18 +140,18 @@ test('clears temporarily stored content when the target tab closes or the timer 
   assert.equal(extension.values.has('pendingXiaohongshuDraft'), false)
 })
 
-test('records success only after the tracked creator tab attempts publication', async () => {
+test('records success only after fill and a verified success signal', async () => {
   const extension = createExtension()
   await extension.send({ kind: 'PREPARE', draft }, app)
   const creator = { url: extension.openedTabs[0].url, tab: { id: extension.openedTabs[0].id } }
   const wrongCreator = { url: creator.url, tab: { id: 999 } }
 
-  assert.equal((await extension.send({ kind: 'PUBLISH_SUCCEEDED' }, creator)).ok, false)
-  assert.equal((await extension.send({ kind: 'PUBLISH_ATTEMPTED' }, wrongCreator)).ok, false)
+  assert.equal((await extension.send({ kind: 'PUBLISH_SUCCEEDED', signal: 'success_text' }, creator)).ok, false)
+  assert.equal((await extension.send({ kind: 'PUBLISH_SUCCEEDED', signal: 'success_text' }, wrongCreator)).ok, false)
   assert.equal((await extension.send({ kind: 'CLEAR_DRAFT' }, creator)).ok, true)
-  assert.equal((await extension.send({ kind: 'PUBLISH_ATTEMPTED' }, creator)).ok, true)
-  assert.equal((await extension.send({ kind: 'PUBLISH_SUCCEEDED' }, creator)).ok, true)
   assert.equal((await extension.send({ kind: 'PUBLISH_SUCCEEDED' }, creator)).ok, false)
+  assert.equal((await extension.send({ kind: 'PUBLISH_SUCCEEDED', signal: 'success_text' }, creator)).ok, true)
+  assert.equal((await extension.send({ kind: 'PUBLISH_SUCCEEDED', signal: 'success_text' }, creator)).ok, false)
 
   const completed = await extension.send({ kind: 'GET_COMPLETED' }, app)
   assert.equal(completed.ok, true)
@@ -174,14 +174,37 @@ test('records success only after the tracked creator tab attempts publication', 
   assert.equal((await extension.send({ kind: 'GET_COMPLETED' }, app)).events.length, 0)
 })
 
+test('returns to the original app tab after the creator success route without a visible click', async () => {
+  const extension = createExtension()
+  await extension.send({ kind: 'PREPARE', draft }, app)
+  const creator = { url: extension.openedTabs[0].url, tab: { id: extension.openedTabs[0].id } }
+  assert.equal((await extension.send({ kind: 'CLEAR_DRAFT' }, creator)).ok, true)
+  creator.url = 'https://creator.xiaohongshu.com/publish/success?from=publish'
+
+  assert.equal((await extension.send({ kind: 'PUBLISH_SUCCEEDED', signal: 'success_page' }, creator)).ok, true)
+  assert.equal(extension.activatedTabs.at(-1).id, app.tab.id)
+  assert.equal(extension.focusedWindows.at(-1).id, 1)
+  assert.equal((await extension.send({ kind: 'GET_COMPLETED' }, app)).events[0].noteId, draft.noteId)
+})
+
+test('accepts the published=true success URL after the draft was filled', async () => {
+  const extension = createExtension()
+  await extension.send({ kind: 'PREPARE', draft }, app)
+  const creator = { url: extension.openedTabs[0].url, tab: { id: extension.openedTabs[0].id } }
+  await extension.send({ kind: 'CLEAR_DRAFT' }, creator)
+  creator.url = 'https://creator.xiaohongshu.com/publish/publish?published=true'
+  assert.equal((await extension.send({ kind: 'PUBLISH_SUCCEEDED', signal: 'success_page' }, creator)).ok, true)
+})
+
 test('opens the Xiaohongshu workspace when the original app tab was closed', async () => {
   const extension = createExtension()
   await extension.send({ kind: 'PREPARE', draft }, app)
   const creator = { url: extension.openedTabs[0].url, tab: { id: extension.openedTabs[0].id, windowId: 7 } }
   extension.closeApp()
-  await extension.send({ kind: 'PUBLISH_ATTEMPTED' }, creator)
+  await extension.send({ kind: 'CLEAR_DRAFT' }, creator)
 
-  assert.equal((await extension.send({ kind: 'PUBLISH_SUCCEEDED' }, creator)).ok, true)
+  creator.url = 'https://creator.xiaohongshu.com/publish/success'
+  assert.equal((await extension.send({ kind: 'PUBLISH_SUCCEEDED', signal: 'success_page' }, creator)).ok, true)
   assert.equal(extension.openedTabs.length, 2)
   assert.equal(extension.openedTabs[1].url, app.url)
   assert.equal(extension.openedTabs[1].windowId, 7)
@@ -196,9 +219,10 @@ test('opens the Xiaohongshu workspace when the original tab left the creation pa
   await extension.send({ kind: 'PREPARE', draft }, app)
   const creator = { url: extension.openedTabs[0].url, tab: { id: extension.openedTabs[0].id } }
   extension.leaveCreationPage()
-  await extension.send({ kind: 'PUBLISH_ATTEMPTED' }, creator)
+  await extension.send({ kind: 'CLEAR_DRAFT' }, creator)
 
-  assert.equal((await extension.send({ kind: 'PUBLISH_SUCCEEDED' }, creator)).ok, true)
+  creator.url = 'https://creator.xiaohongshu.com/publish/success'
+  assert.equal((await extension.send({ kind: 'PUBLISH_SUCCEEDED', signal: 'success_page' }, creator)).ok, true)
   assert.equal(extension.openedTabs[1].url, app.url)
   assert.equal(extension.focusedWindows[0].options.focused, true)
   assert.equal(extension.activatedTabs.length, 0)
@@ -209,6 +233,6 @@ test('closing the creator tab removes publication tracking', async () => {
   await extension.send({ kind: 'PREPARE', draft }, app)
   const creator = { url: extension.openedTabs[0].url, tab: { id: extension.openedTabs[0].id } }
   await extension.closeTab(creator.tab.id)
-  assert.equal((await extension.send({ kind: 'PUBLISH_ATTEMPTED' }, creator)).ok, false)
+  assert.equal((await extension.send({ kind: 'PUBLISH_SUCCEEDED', signal: 'success_text' }, creator)).ok, false)
   assert.equal((await extension.send({ kind: 'GET_COMPLETED' }, app)).events.length, 0)
 })
