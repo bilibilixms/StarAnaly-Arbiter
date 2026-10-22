@@ -1,5 +1,6 @@
 package com.staranaly.arbiter.share;
 
+import java.io.IOException;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
@@ -29,7 +30,7 @@ class XiaohongshuNoteServiceTest {
     }
 
     @Test
-    void editingDraftUpdatesTextAndOriginalImage() {
+    void editingDraftUpdatesTextAndOriginalImage() throws IOException {
         XiaohongshuNote note = new XiaohongshuNote("旧要求", "旧标题", "旧正文", "", "old.jpg", "image/jpeg", 4);
         XiaohongshuNoteImage storedImage = new XiaohongshuNoteImage(1L, new byte[] {1});
         when(notes.findById(1L)).thenReturn(Optional.of(note));
