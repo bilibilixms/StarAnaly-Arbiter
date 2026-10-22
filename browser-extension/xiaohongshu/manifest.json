@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "星析 · 小红书发布助手",
-  "version": "0.1.0",
-  "description": "把星析生成的图片和文案填入小红书创作页，由你检查并发布。",
+  "version": "0.2.0",
+  "description": "把星析生成的图片和文案填入小红书创作页，并在发布成功后同步状态。",
   "permissions": ["storage", "unlimitedStorage", "alarms"],
   "background": {
     "service_worker": "background.js"
@@ -15,7 +15,7 @@
     },
     {
       "matches": ["https://creator.xiaohongshu.com/*"],
-      "js": ["publisher.js"],
+      "js": ["publication-signal.js", "publisher.js"],
       "run_at": "document_idle"
     }
   ]

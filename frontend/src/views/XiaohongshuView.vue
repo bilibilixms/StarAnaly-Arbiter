@@ -20,6 +20,7 @@ const error = ref('')
 const copyStatus = ref('')
 const publishStatus = ref('')
 const extensionReady = ref(false)
+const publicationSyncReady = ref(false)
 const preparingPublish = ref(false)
 const pendingRequestId = ref('')
 const currentNote = ref<XiaohongshuNote | null>(null)
@@ -33,6 +34,7 @@ const saving = ref(false)
 const libraryError = ref('')
 const saveStatus = ref('')
 let publishTimeout = 0
+const processingPublicationEvents = new Set<string>()
 
 const imageSize = computed(() => image.value ? `${(image.value.size / 1_000_000).toFixed(1)} MB` : '')
 const isPublished = computed(() => currentNote.value?.status === 'PUBLISHED')
@@ -150,8 +152,8 @@ async function openNote(note: XiaohongshuNote) {
   }
 }
 
-async function saveNote() {
-  if (saving.value || generating.value || !draft.value || !image.value || isPublished.value) return
+async function saveNote(): Promise<XiaohongshuNote | null> {
+  if (saving.value || generating.value || !draft.value || !image.value || isPublished.value) return null
   error.value = ''
   saveStatus.value = ''
   const title = draft.value.title.trim()
@@ -159,15 +161,15 @@ async function saveNote() {
   const tags = tagsText.value.trim()
   if (!requirements.value.trim() || requirements.value.trim().length > 2000) {
     error.value = '请填写不超过 2000 字的发布要求。'
-    return
+    return null
   }
   if (!title || Array.from(title).length > 20) {
     error.value = '标题需为 1 至 20 字。'
-    return
+    return null
   }
   if (!body || Array.from([body, tags].filter(Boolean).join('\n\n')).length > 1000) {
     error.value = '正文与话题合计不能超过 1000 字。'
-    return
+    return null
   }
   saving.value = true
   try {
@@ -180,8 +182,10 @@ async function saveNote() {
     activeTab.value = 'DRAFT'
     saveStatus.value = '文案已保存，可以稍后从草稿列表继续编辑或发布。'
     await refreshNotes()
+    return saved
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '保存失败，请稍后重试。'
+    return null
   } finally {
     saving.value = false
   }
@@ -266,12 +270,35 @@ function bodyWithTags() {
   return [draft.value?.body.trim(), tagsText.value.trim()].filter(Boolean).join('\n\n')
 }
 
+async function recordAutomaticPublication(eventId: string, noteId: number) {
+  if (processingPublicationEvents.has(eventId)) return
+  processingPublicationEvents.add(eventId)
+  try {
+    const published = await markXiaohongshuNotePublished(noteId)
+    if (currentNote.value?.id === noteId) currentNote.value = published
+    activeTab.value = 'PUBLISHED'
+    publishStatus.value = '已检测到小红书发布成功，文案已自动移入“已发布”。'
+    await refreshNotes()
+    window.postMessage({ source: appSource, kind: 'ACK_PUBLICATION', eventId }, location.origin)
+  } catch (cause) {
+    libraryError.value = cause instanceof Error ? cause.message : '自动更新发布记录失败；请刷新页面重试。'
+  } finally {
+    processingPublicationEvents.delete(eventId)
+  }
+}
+
 function handleExtensionMessage(event: MessageEvent) {
   if (event.source !== window || event.origin !== location.origin) return
   const message = event.data
   if (!message || message.source !== extensionSource) return
   if (message.kind === 'READY') {
     extensionReady.value = true
+    publicationSyncReady.value = message.publicationSync === true
+    return
+  }
+  if (message.kind === 'PUBLISHED' && typeof message.requestId === 'string'
+      && Number.isSafeInteger(message.noteId) && message.noteId > 0) {
+    void recordAutomaticPublication(message.requestId, message.noteId)
     return
   }
   if (message.kind !== 'PREPARED' || message.requestId !== pendingRequestId.value) return
@@ -295,7 +322,7 @@ function readImage(file: File): Promise<string> {
 }
 
 async function publishWithExtension() {
-  if (!draft.value || !image.value || preparingPublish.value) return
+  if (!draft.value || !image.value || preparingPublish.value || saving.value || generating.value) return
   publishStatus.value = ''
   if (!draft.value.title.trim() || Array.from(draft.value.title.trim()).length > 20) {
     publishStatus.value = '请将标题调整为 1 至 20 字后再去发布。'
@@ -307,8 +334,14 @@ async function publishWithExtension() {
   }
   preparingPublish.value = true
   try {
+    const note = !currentNote.value || isDirty.value ? await saveNote() : currentNote.value
+    if (!note) {
+      publishStatus.value = '请先修正文案保存失败的问题，再去发布。'
+      return
+    }
     const requestId = crypto.randomUUID()
     const payload = {
+      noteId: note.id,
       title: draft.value.title.trim(),
       body: bodyWithTags(),
       imageName: image.value.name,
@@ -324,8 +357,9 @@ async function publishWithExtension() {
       publishStatus.value = '扩展没有及时响应，请刷新页面并确认扩展已启用。'
     }, 45000)
   } catch (cause) {
-    preparingPublish.value = false
     publishStatus.value = cause instanceof Error ? cause.message : '无法把图片交给扩展。'
+  } finally {
+    if (!pendingRequestId.value) preparingPublish.value = false
   }
 }
 
@@ -452,16 +486,18 @@ onUnmounted(() => {
             @click="prepareWebPublish">复制正文并打开发布页</a>
           <a v-if="!isPublished && (extensionReady || canShareImage)" class="text-button share-result__web-link" :href="publishUrl"
             target="_blank" rel="noopener noreferrer" @click="prepareWebPublish">打开网页版</a>
-          <button v-if="currentNote && !isPublished" class="button button--secondary" type="button"
+          <button v-if="currentNote && !isPublished && !publicationSyncReady" class="button button--secondary" type="button"
             :disabled="saving || preparingPublish || isDirty" @click="markPublished">已在小红书发布</button>
         </div>
         <p v-if="error" class="inline-error" role="alert">{{ error }}</p>
         <p v-if="saveStatus" class="field-hint" role="status">{{ saveStatus }}</p>
         <p v-if="copyStatus" class="field-hint" role="status">{{ copyStatus }}</p>
         <p v-if="publishStatus" class="field-hint" role="status">{{ publishStatus }}</p>
-        <p v-if="currentNote && isDirty" class="field-hint">修改后请先保存，再标记为已发布。</p>
-        <p v-if="!isPublished" class="field-hint">{{ extensionReady
-          ? '扩展会打开小红书并尝试填入原图、标题和正文；请检查后亲自点击发布。'
+        <p v-if="currentNote && isDirty" class="field-hint">修改后请先保存，再去发布。</p>
+        <p v-if="!isPublished" class="field-hint">{{ publicationSyncReady
+          ? '去发布时会先保存当前文案。扩展填入内容后请亲自点击小红书的发布按钮；检测到发布成功提示后，文案会自动移入“已发布”。'
+          : extensionReady
+            ? '当前扩展版本尚未启用发布成功自动同步。请在扩展管理页重新加载扩展，再刷新星析页面。'
           : canShareImage
             ? '系统分享会尝试发送原图、标题和正文；请选择小红书，并检查实际带入的内容。'
             : '网页版无法自动填入图片和文案；点击后会复制正文与话题并打开小红书，请手动上传原图、粘贴正文和标题。' }}</p>
@@ -472,6 +508,12 @@ onUnmounted(() => {
             <li>点击“加载已解压的扩展程序”，选择项目中的 <code>browser-extension/xiaohongshu</code> 文件夹。</li>
             <li>刷新星析页面；检测到扩展后，“去发布”会自动带入图片和文案。</li>
           </ol>
+        </details>
+        <details v-if="currentNote && !isPublished && publicationSyncReady" class="share-extension-help">
+          <summary>发布后没有自动同步？</summary>
+          <p>小红书页面变化时，扩展可能无法识别成功提示。确认笔记已经发布后，可手动补记。</p>
+          <button class="button button--secondary" type="button" :disabled="saving || preparingPublish || isDirty"
+            @click="markPublished">手动标记为已发布</button>
         </details>
       </template>
     </section>

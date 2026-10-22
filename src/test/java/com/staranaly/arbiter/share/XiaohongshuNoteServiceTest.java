@@ -55,6 +55,7 @@ class XiaohongshuNoteServiceTest {
 
         assertThat(note.getStatus()).isEqualTo(XiaohongshuNote.Status.PUBLISHED);
         assertThat(note.getPublishedAt()).isNotNull();
+        assertThat(service.markPublished(1L).publishedAt()).isEqualTo(note.getPublishedAt());
         assertThatThrownBy(() -> service.update(1L, null, "要求", "标题", "正文", ""))
                 .isInstanceOf(XiaohongshuInputException.class);
         assertThatThrownBy(() -> service.delete(1L))

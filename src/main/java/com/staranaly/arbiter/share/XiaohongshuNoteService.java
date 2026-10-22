@@ -69,9 +69,11 @@ public class XiaohongshuNoteService {
 
     @Transactional
     public XiaohongshuNoteResponse markPublished(long id) {
-        XiaohongshuNote note = findDraft(id);
-        note.markPublished();
-        notes.flush();
+        XiaohongshuNote note = find(id);
+        if (note.getStatus() == XiaohongshuNote.Status.DRAFT) {
+            note.markPublished();
+            notes.flush();
+        }
         return XiaohongshuNoteResponse.from(note);
     }
 
