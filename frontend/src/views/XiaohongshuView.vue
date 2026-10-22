@@ -276,6 +276,7 @@ async function recordAutomaticPublication(eventId: string, noteId: number) {
   try {
     const published = await markXiaohongshuNotePublished(noteId)
     if (currentNote.value?.id === noteId) currentNote.value = published
+    else if (!currentNote.value && !draft.value) await openNote(published)
     activeTab.value = 'PUBLISHED'
     publishStatus.value = '已检测到小红书发布成功，文案已自动移入“已发布”。'
     await refreshNotes()

@@ -57,10 +57,15 @@ test('detects the extension and acknowledges a publish handoff from the creation
   })
   assert.equal(sentToBackground.length, 2)
 
-  runtimeListener({ kind: 'PUBLISHED', event: { id: 'event-1', noteId: 42, appOrigin: location.origin } })
+  let deliveryResponse
+  runtimeListener({ kind: 'PUBLISHED', event: { id: 'event-1', noteId: 42, appOrigin: location.origin } },
+    null, (response) => { deliveryResponse = response })
+  assert.equal(deliveryResponse.ok, true)
   assert.equal(sentToPage.at(-1).message.kind, 'PUBLISHED')
   assert.equal(sentToPage.at(-1).message.noteId, 42)
-  runtimeListener({ kind: 'PUBLISHED', event: { id: 'forged', noteId: 42, appOrigin: 'http://other.example' } })
+  runtimeListener({ kind: 'PUBLISHED', event: { id: 'forged', noteId: 42, appOrigin: 'http://other.example' } },
+    null, (response) => { deliveryResponse = response })
+  assert.equal(deliveryResponse.ok, false)
   assert.equal(sentToPage.at(-1).message.requestId, 'event-1')
 
   await messageListener({

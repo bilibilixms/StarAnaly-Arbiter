@@ -12,8 +12,9 @@
 
   function forwardPublication(event) {
     if (!isCreationPage() || event?.appOrigin !== location.origin
-        || typeof event.id !== 'string' || !Number.isSafeInteger(event.noteId)) return
+        || typeof event.id !== 'string' || !Number.isSafeInteger(event.noteId)) return false
     reply('PUBLISHED', event.id, { noteId: event.noteId })
+    return true
   }
 
   async function replayPublications() {
@@ -21,8 +22,8 @@
     if (result?.ok) for (const event of result.events || []) forwardPublication(event)
   }
 
-  chrome.runtime.onMessage.addListener((message) => {
-    if (message?.kind === 'PUBLISHED') forwardPublication(message.event)
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message?.kind === 'PUBLISHED') sendResponse({ ok: forwardPublication(message.event) })
   })
 
   window.addEventListener('message', async (event) => {

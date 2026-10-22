@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "星析 · 小红书发布助手",
-  "version": "0.2.0",
-  "description": "把星析生成的图片和文案填入小红书创作页，并在发布成功后同步状态。",
+  "version": "0.3.0",
+  "description": "填入小红书图文内容，发布成功后同步状态并返回星析。",
   "permissions": ["storage", "unlimitedStorage", "alarms"],
   "background": {
     "service_worker": "background.js"

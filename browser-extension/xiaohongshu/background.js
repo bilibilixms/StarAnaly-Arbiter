@@ -123,7 +123,30 @@ async function publishSucceeded(sender) {
     [COMPLETED_KEY]: { ...stored[COMPLETED_KEY], [id]: event },
   })
   await removePublication(sender.tab.id)
-  await chrome.tabs.sendMessage(publication.appTabId, { kind: 'PUBLISHED', event }).catch(() => {})
+  let delivered = false
+  try {
+    const response = await chrome.tabs.sendMessage(publication.appTabId, { kind: 'PUBLISHED', event })
+    delivered = response?.ok === true
+  } catch {
+    // The original tab may have been closed or navigated away.
+  }
+  if (delivered) {
+    try {
+      const appTab = await chrome.tabs.update(publication.appTabId, { active: true })
+      await chrome.windows.update(appTab.windowId, { focused: true })
+      return { ok: true }
+    } catch {
+      // The app tab may have disappeared while switching back.
+    }
+  }
+  const newTab = { url: `${publication.appOrigin}/share/xiaohongshu`, active: true }
+  if (Number.isInteger(sender.tab.windowId)) newTab.windowId = sender.tab.windowId
+  try {
+    const appTab = await chrome.tabs.create(newTab)
+    await chrome.windows.update(appTab.windowId, { focused: true })
+  } catch {
+    // The publication event remains queued for the next visit to StarAnaly.
+  }
   return { ok: true }
 }
 
