@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { deleteXiaohongshuNote, generateXiaohongshuDraft, listXiaohongshuNotes,
+import { deleteXiaohongshuMaterial, deleteXiaohongshuNote, generateXiaohongshuDraft,
+  listXiaohongshuMaterials, listXiaohongshuNotes, saveXiaohongshuMaterial,
   loadXiaohongshuImage, markXiaohongshuNotePublished, saveXiaohongshuNote,
-  type XiaohongshuDraft, type XiaohongshuNote } from '@/api/sharing'
+  type XiaohongshuDraft, type XiaohongshuMaterial, type XiaohongshuNote } from '@/api/sharing'
 
 const maxImageBytes = 20_000_000
 const supportedTypes = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
@@ -13,6 +14,7 @@ const extensionSource = 'staranaly-xhs-extension'
 const route = useRoute()
 const router = useRouter()
 const isRecordsPage = computed(() => route.name === 'share-xiaohongshu-records')
+const isMaterialsPage = computed(() => route.name === 'share-xiaohongshu-materials')
 
 const image = ref<File | null>(null)
 const imageUrl = ref('')
@@ -31,6 +33,18 @@ const currentNote = ref<XiaohongshuNote | null>(null)
 const imageChanged = ref(false)
 const savedNotes = ref<XiaohongshuNote[]>([])
 const publishedNotes = ref<XiaohongshuNote[]>([])
+const materials = ref<XiaohongshuMaterial[]>([])
+const selectedMaterialIds = ref<number[]>([])
+const materialEditorOpen = ref(false)
+const materialEditingId = ref<number | null>(null)
+const materialName = ref('')
+const materialContent = ref('')
+const materialFile = ref<File | null>(null)
+const materialMode = ref<'text' | 'file'>('text')
+const materialSaving = ref(false)
+const materialError = ref('')
+const materialStatus = ref('')
+const materialEditorElement = ref<HTMLElement | null>(null)
 const activeTab = ref<'DRAFT' | 'PUBLISHED'>('DRAFT')
 const loadingNotes = ref(false)
 const loadingNote = ref(false)
@@ -114,6 +128,103 @@ function edited() {
   copyStatus.value = ''
   publishStatus.value = ''
   saveStatus.value = ''
+}
+
+async function refreshMaterials() {
+  try {
+    materials.value = await listXiaohongshuMaterials()
+    const existing = new Set(materials.value.map((item) => item.id))
+    selectedMaterialIds.value = selectedMaterialIds.value.filter((id) => existing.has(id))
+  } catch (cause) {
+    materialError.value = cause instanceof Error ? cause.message : '读取创作素材失败。'
+  }
+}
+
+function toggleMaterial(id: number, event: Event) {
+  const input = event.target as HTMLInputElement
+  const checked = input.checked
+  materialError.value = ''
+  if (checked && selectedMaterialIds.value.length >= 3) {
+    input.checked = false
+    materialError.value = '每次最多选用 3 份创作素材。'
+    return
+  }
+  selectedMaterialIds.value = checked
+    ? [...selectedMaterialIds.value, id]
+    : selectedMaterialIds.value.filter((item) => item !== id)
+}
+
+function openMaterialEditor(material?: XiaohongshuMaterial) {
+  materialEditingId.value = material?.id ?? null
+  materialName.value = material?.name ?? ''
+  materialContent.value = material?.content ?? ''
+  materialFile.value = null
+  materialMode.value = 'text'
+  materialError.value = ''
+  materialStatus.value = ''
+  materialEditorOpen.value = true
+  void nextTick(() => materialEditorElement.value?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+}
+
+function closeMaterialEditor() {
+  if (materialSaving.value) return
+  materialEditorOpen.value = false
+  materialFile.value = null
+  materialError.value = ''
+}
+
+function selectMaterialFile(event: Event) {
+  const input = event.target as HTMLInputElement
+  materialFile.value = input.files?.[0] ?? null
+  materialError.value = ''
+}
+
+async function saveMaterial() {
+  if (materialSaving.value) return
+  materialError.value = ''
+  const name = materialName.value.trim()
+  if (!name || name.length > 60) {
+    materialError.value = '素材名称需为 1 至 60 字。'
+    return
+  }
+  if (materialMode.value === 'file' && (!materialFile.value || materialFile.value.size > 5 * 1024 * 1024)) {
+    materialError.value = '请选择不超过 5 MiB 的 PDF、DOC 或 DOCX 文档。'
+    return
+  }
+  if (materialMode.value === 'text' && (!materialContent.value.trim() || materialContent.value.trim().length > 12000)) {
+    materialError.value = '请输入 1 至 12000 字的素材内容。'
+    return
+  }
+  materialSaving.value = true
+  try {
+    const saved = await saveXiaohongshuMaterial({
+      name,
+      ...(materialMode.value === 'file' ? { file: materialFile.value } : { content: materialContent.value.trim() }),
+    }, materialEditingId.value ?? undefined)
+    materialEditorOpen.value = false
+    materialFile.value = null
+    materialStatus.value = materialEditingId.value ? '素材已更新，下次生成会使用最新内容。' : '素材已保存，可在之后的创作中反复选用。'
+    if (materialEditingId.value === null && selectedMaterialIds.value.length < 3) selectedMaterialIds.value.push(saved.id)
+    await refreshMaterials()
+  } catch (cause) {
+    materialError.value = cause instanceof Error ? cause.message : '保存创作素材失败。'
+  } finally {
+    materialSaving.value = false
+  }
+}
+
+async function removeMaterial(material: XiaohongshuMaterial) {
+  if (!window.confirm(`确定删除创作素材“${material.name}”吗？`)) return
+  materialError.value = ''
+  try {
+    await deleteXiaohongshuMaterial(material.id)
+    if (materialEditingId.value === material.id) closeMaterialEditor()
+    selectedMaterialIds.value = selectedMaterialIds.value.filter((id) => id !== material.id)
+    materialStatus.value = '创作素材已删除。'
+    await refreshMaterials()
+  } catch (cause) {
+    materialError.value = cause instanceof Error ? cause.message : '删除创作素材失败。'
+  }
 }
 
 async function refreshNotes() {
@@ -241,7 +352,7 @@ async function generate() {
   }
   generating.value = true
   try {
-    const result = await generateXiaohongshuDraft(image.value, request)
+    const result = await generateXiaohongshuDraft(image.value, request, selectedMaterialIds.value)
     draft.value = result
     tagsText.value = result.hashtags.map((tag) => `#${tag.replace(/^#+/, '')}`).join(' ')
     saveStatus.value = ''
@@ -403,6 +514,7 @@ onMounted(() => {
   window.addEventListener('message', handleExtensionMessage)
   window.postMessage({ source: appSource, kind: 'PING' }, location.origin)
   void refreshNotes()
+  void refreshMaterials()
 })
 
 onUnmounted(() => {
@@ -417,14 +529,14 @@ onUnmounted(() => {
   <section class="page-heading xhs-heading">
     <div>
       <p class="eyebrow">分享空间 / 小红书</p>
-      <h1>{{ isRecordsPage ? '创作记录' : '小红书图文创作' }}</h1>
-      <p class="page-description">{{ isRecordsPage ? '保存的草稿与已发布的笔记，都在这里。' : '上传图片即可生成发布文案；也可以补充你的创作想法。' }}</p>
+      <h1>{{ isMaterialsPage ? '素材管理' : isRecordsPage ? '创作记录' : '小红书图文创作' }}</h1>
+      <p class="page-description">{{ isMaterialsPage ? '保存自己的资料和表达方式，创作时随时选用。' : isRecordsPage ? '保存的草稿与已发布的笔记，都在这里。' : '上传图片，选用自己的创作素材，让文案更像你写的。' }}</p>
     </div>
-    <button v-if="!isRecordsPage" class="button button--secondary" type="button" :disabled="generating || preparingPublish || saving || loadingNote" @click="startNew">新建图文</button>
+    <button v-if="!isRecordsPage && !isMaterialsPage" class="button button--secondary" type="button" :disabled="generating || preparingPublish || saving || loadingNote" @click="startNew">新建图文</button>
     <RouterLink v-else class="button button--secondary" to="/share/xiaohongshu">去图文创作</RouterLink>
   </section>
 
-  <div v-if="!isRecordsPage" class="share-layout">
+  <div v-if="!isRecordsPage && !isMaterialsPage" class="share-layout">
     <section class="panel share-compose" aria-label="生成发布文案">
       <h2>创作素材</h2>
       <form @submit.prevent="generate">
@@ -446,12 +558,36 @@ onUnmounted(() => {
           <button v-if="!isPublished" class="text-button" type="button" :disabled="generating || preparingPublish || saving" @click="startNew">清空当前创作</button>
           </div>
         </div>
+        <section class="xhs-materials" aria-label="可复用的创作素材">
+          <div class="xhs-materials__heading">
+            <div>
+              <h3>参考资料与表达风格 <span class="xhs-optional">选填</span></h3>
+              <p>选择本次要参考的素材，生成时会优先考虑其中的内容。</p>
+            </div>
+            <RouterLink class="button button--secondary" to="/share/xiaohongshu/materials">素材管理</RouterLink>
+          </div>
+          <p v-if="materials.length === 0" class="xhs-materials__empty">暂无素材。前往素材管理添加文字、PDF 或 Word 文档。</p>
+          <ul v-else class="xhs-materials__list">
+            <li v-for="material in materials" :key="material.id" class="xhs-materials__item">
+              <label class="xhs-materials__select">
+                <input type="checkbox" :checked="selectedMaterialIds.includes(material.id)" :disabled="generating || isPublished"
+                  @change="toggleMaterial(material.id, $event)" />
+                <span>
+                  <strong>{{ material.name }}</strong>
+                  <small>{{ material.sourceName ? `来自 ${material.sourceName}` : '直接输入' }} · {{ material.content.length }} 字</small>
+                </span>
+              </label>
+            </li>
+          </ul>
+          <p class="field-hint">每次最多选用 3 份。去素材管理修改后，重新生成即可使用新内容。</p>
+          <p v-if="materialError" class="inline-error" role="alert">{{ materialError }}</p>
+        </section>
         <div class="field">
-          <label for="share-requirements">文字要求 <span class="xhs-optional">选填</span></label>
+          <label for="share-requirements">本次文字要求 <span class="xhs-optional">选填</span></label>
           <textarea id="share-requirements" v-model="requirements" rows="7" maxlength="2000"
-            :disabled="generating || preparingPublish || isPublished || saving" placeholder="例如：根据图片写一篇周末探店笔记，语气轻松，突出环境和拍照氛围。"
+            :disabled="generating || preparingPublish || isPublished || saving" placeholder="例如：这次重点写窗边的位置，别提价格。"
             @input="edited"></textarea>
-          <p class="field-hint">留空时会根据图片生成；填写后会结合你的想法创作。最多 2000 字。</p>
+          <p class="field-hint">可留空。已选素材会优先作为事实和语气参考，图片用于确认画面内容。最多 2000 字。</p>
         </div>
         <p v-if="error" class="inline-error" role="alert">{{ error }}</p>
         <div class="form-actions">
@@ -488,10 +624,10 @@ onUnmounted(() => {
           </div>
         </div>
         <div class="share-result__actions">
-          <button v-if="!isPublished" class="button" type="button" :disabled="saving || generating || preparingPublish || !image || (!isDirty && !!currentNote)"
+          <button v-if="!isPublished" class="button button--secondary" type="button" :disabled="saving || generating || preparingPublish || !image || (!isDirty && !!currentNote)"
             @click="saveNote">{{ saving ? '正在保存…' : currentNote ? '保存修改' : '保存当前文案' }}</button>
-          <button class="button button--secondary" type="button" @click="copyTitle">复制标题</button>
-          <button class="button button--secondary" type="button" @click="copyBody">复制正文与话题</button>
+          <button class="button button--quiet" type="button" @click="copyTitle">复制标题</button>
+          <button class="button button--quiet" type="button" @click="copyBody">复制正文与话题</button>
           <button v-if="!isPublished && extensionReady" class="button" type="button" :disabled="preparingPublish || saving"
             @click="publishWithExtension">{{ preparingPublish ? '正在交给扩展…' : '去发布（自动填入）' }}</button>
           <button v-else-if="!isPublished && canShareImage" class="button" type="button" :disabled="saving" @click="shareViaDevice">去发布（系统分享）</button>
@@ -531,6 +667,71 @@ onUnmounted(() => {
       </template>
     </section>
   </div>
+
+  <section v-else-if="isMaterialsPage" class="panel xhs-material-library" aria-label="小红书素材管理">
+    <div class="xhs-material-library__heading">
+      <div>
+        <p class="eyebrow">我的创作素材</p>
+        <h2>素材管理</h2>
+        <p>按主题保存事实、经历和表达风格。图文创作时选用，生成文案会优先参考这些内容。</p>
+      </div>
+      <button class="button" type="button" :disabled="materialSaving" @click="openMaterialEditor()">新增素材</button>
+    </div>
+
+    <form v-if="materialEditorOpen" ref="materialEditorElement" class="xhs-material-editor xhs-material-editor--page"
+      aria-label="编辑创作素材" @submit.prevent="saveMaterial">
+      <div class="xhs-material-editor__heading">
+        <h3>{{ materialEditingId ? '修改创作素材' : '新增创作素材' }}</h3>
+        <button class="text-button" type="button" :disabled="materialSaving" @click="closeMaterialEditor">收起</button>
+      </div>
+      <div class="field">
+        <label for="material-name">素材名称</label>
+        <input id="material-name" v-model="materialName" maxlength="60" placeholder="例如：我的日常语气、咖啡店真实体验" :disabled="materialSaving" />
+      </div>
+      <div class="xhs-material-editor__modes" role="group" aria-label="素材内容来源">
+        <button class="button" :class="materialMode === 'text' ? '' : 'button--quiet'" type="button" :disabled="materialSaving"
+          :aria-pressed="materialMode === 'text'" @click="materialMode = 'text'; materialFile = null">直接输入</button>
+        <button class="button" :class="materialMode === 'file' ? '' : 'button--quiet'" type="button" :disabled="materialSaving"
+          :aria-pressed="materialMode === 'file'" @click="materialMode = 'file'">上传文档</button>
+      </div>
+      <div v-if="materialMode === 'text'" class="field">
+        <label for="material-content">素材内容</label>
+        <textarea id="material-content" v-model="materialContent" rows="11" maxlength="12000" :disabled="materialSaving"
+          placeholder="写下真实经历、准确资料，或贴一段你喜欢的表达方式。修改这里并保存，就会替换原内容。"></textarea>
+        <p class="field-hint">最多 12000 字。修改文字后保存，即可替换原内容。</p>
+      </div>
+      <div v-else class="field">
+        <label for="material-file">PDF 或 Word 文档</label>
+        <input id="material-file" class="xhs-material-editor__file" type="file" accept=".pdf,.doc,.docx" :disabled="materialSaving"
+          @change="selectMaterialFile" />
+        <p class="field-hint">最大 5 MiB。上传后提取文字保存；扫描版 PDF 暂不支持。新文档会替换原内容。</p>
+      </div>
+      <p v-if="materialError" class="inline-error" role="alert">{{ materialError }}</p>
+      <div class="xhs-material-editor__actions">
+        <button class="button" type="submit" :disabled="materialSaving">{{ materialSaving ? '正在保存…' : materialEditingId ? '保存修改' : '保存素材' }}</button>
+        <button class="button button--quiet" type="button" :disabled="materialSaving" @click="closeMaterialEditor">取消</button>
+      </div>
+    </form>
+
+    <p v-if="materialStatus" class="xhs-material-library__status" role="status">{{ materialStatus }}</p>
+    <p v-if="materialError && !materialEditorOpen" class="inline-error" role="alert">{{ materialError }}</p>
+    <p v-if="materials.length === 0" class="xhs-material-library__empty">还没有素材。点击「新增素材」，直接输入文字，或上传 PDF、Word 文档。</p>
+    <ul v-else class="xhs-material-library__list">
+      <li v-for="material in materials" :key="material.id" class="xhs-material-library__item">
+        <div class="xhs-material-library__meta">
+          <div>
+            <strong>{{ material.name }}</strong>
+            <span>{{ material.sourceName ? `来自 ${material.sourceName}` : '直接输入' }} · {{ material.content.length }} 字 · 更新于 {{ formatNoteTime(material.updatedAt) }}</span>
+          </div>
+          <div class="xhs-material-library__actions">
+            <button class="button button--secondary" type="button" :disabled="materialSaving" @click="openMaterialEditor(material)">查看 / 修改</button>
+            <button class="text-button text-button--danger" type="button" :disabled="materialSaving" @click="removeMaterial(material)">删除</button>
+          </div>
+        </div>
+        <p>{{ material.content.slice(0, 180) }}{{ material.content.length > 180 ? '…' : '' }}</p>
+      </li>
+    </ul>
+  </section>
 
   <section v-else class="panel share-library" aria-label="我的小红书文案">
     <div class="share-library__heading">

@@ -46,8 +46,10 @@ class TaskServiceSearchTest {
         when(repository.findSearchCandidates()).thenReturn(List.of(
                 candidate(1L, "分析销售额", early), candidate(2L, "分析销售额", late),
                 candidate(3L, "分析销售额", late)));
-        when(repository.findAllById(any())).thenReturn(List.of(
-                task(1L, "分析销售额"), task(2L, "分析销售额"), task(3L, "分析销售额")));
+        Task first = task(1L, "分析销售额");
+        Task second = task(2L, "分析销售额");
+        Task third = task(3L, "分析销售额");
+        when(repository.findAllById(any())).thenReturn(List.of(first, second, third));
 
         Sort newest = Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
         Sort oldest = Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("id"));

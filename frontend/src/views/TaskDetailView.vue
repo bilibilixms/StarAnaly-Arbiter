@@ -356,8 +356,8 @@ onUnmounted(() => {
     <section class="panel workspace-section" aria-label="上传文件">
       <div class="section-heading"><h2>上传文件</h2></div>
       <label class="upload-control">
-        <span>{{ uploadBusy ? '正在上传…' : '选择文件（可多选）' }}</span>
-        <input type="file" multiple accept=".csv,.xls,.xlsx,.txt,.md,.markdown,.pdf,.doc,.docx" :disabled="starting || uploadBusy || documentBusy || isRunning" @change="uploadFile" />
+        <input class="upload-control__input" type="file" multiple accept=".csv,.xls,.xlsx,.txt,.md,.markdown,.pdf,.doc,.docx" :disabled="starting || uploadBusy || documentBusy || isRunning" @change="uploadFile" />
+        <span class="upload-control__button">{{ uploadBusy ? '正在上传…' : '选择文件（可多选）' }}</span>
       </label>
       <p v-if="uploadProgress" class="field-hint" role="status">{{ uploadProgress }}</p>
       <p class="field-hint">每次最多选择 20 个文件，上传后分别显示在表格数据或知识资料中。</p>

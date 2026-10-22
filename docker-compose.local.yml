@@ -1,0 +1,45 @@
+services:
+  mysql:
+    image: mysql:8.0
+
+  backend:
+    image: maven:3.9.9-eclipse-temurin-21
+    working_dir: /workspace
+    command: mvn spring-boot:run
+    volumes:
+      - ./:/workspace
+      - maven-cache:/root/.m2
+    environment:
+      MYSQL_USER: ${MYSQL_USER:-staranaly}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      DB_HOST: mysql
+      DB_PORT: 3306
+      MODEL_API_KEY: ${MODEL_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      MODEL_BASE_URL: ${MODEL_BASE_URL:-https://api.deepseek.com}
+      MODEL_NAME: ${MODEL_NAME:-deepseek-flash}
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  frontend:
+    image: node:24-bookworm-slim
+    working_dir: /app
+    command: sh -lc "npm ci --no-audit --no-fund && npm run dev -- --host 0.0.0.0"
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+      - npm-cache:/root/.npm
+    environment:
+      BACKEND_URL: http://backend:8080
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
+volumes:
+  maven-cache:
+  frontend-node-modules:
+  npm-cache:

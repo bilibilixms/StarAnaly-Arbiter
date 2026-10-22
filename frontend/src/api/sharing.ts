@@ -18,7 +18,17 @@ export interface XiaohongshuNote {
   publishedAt: string | null
 }
 
+export interface XiaohongshuMaterial {
+  id: number
+  name: string
+  content: string
+  sourceName: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 const notesUrl = '/api/share/xiaohongshu/notes'
+const materialsUrl = '/api/share/xiaohongshu/materials'
 
 async function readResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
@@ -84,10 +94,33 @@ export async function deleteXiaohongshuNote(id: number): Promise<void> {
   if (!response.ok) await readResponse(response)
 }
 
-export async function generateXiaohongshuDraft(image: File, requirements: string): Promise<XiaohongshuDraft> {
+export function listXiaohongshuMaterials(): Promise<XiaohongshuMaterial[]> {
+  return request(materialsUrl)
+}
+
+export function saveXiaohongshuMaterial(fields: { name: string; content?: string; file?: File | null }, id?: number): Promise<XiaohongshuMaterial> {
+  const form = new FormData()
+  form.append('name', fields.name)
+  if (fields.file) form.append('file', fields.file)
+  else if (fields.content !== undefined) form.append('content', fields.content)
+  return request(id ? `${materialsUrl}/${id}` : materialsUrl, { method: id ? 'PUT' : 'POST', body: form })
+}
+
+export async function deleteXiaohongshuMaterial(id: number): Promise<void> {
+  let response: Response
+  try {
+    response = await fetch(`${materialsUrl}/${id}`, { method: 'DELETE' })
+  } catch {
+    throw new Error('无法连接后端服务，请确认服务已启动。')
+  }
+  if (!response.ok) await readResponse(response)
+}
+
+export async function generateXiaohongshuDraft(image: File, requirements: string, materialIds: number[] = []): Promise<XiaohongshuDraft> {
   const form = new FormData()
   form.append('image', image)
   form.append('requirements', requirements)
+  for (const id of materialIds) form.append('materialIds', String(id))
 
   let response: Response
   try {

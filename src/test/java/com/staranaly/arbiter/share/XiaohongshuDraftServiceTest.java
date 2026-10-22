@@ -76,6 +76,26 @@ class XiaohongshuDraftServiceTest {
     }
 
     @Test
+    void putsSavedMaterialBeforeCurrentRequirementsInImagePrompt() {
+        MultipartFile image = new MockMultipartFile("image", "photo.jpg", "image/jpeg",
+                new byte[] {(byte) 0xff, (byte) 0xd8, (byte) 0xff, 0x00});
+        XiaohongshuMaterial material = new XiaohongshuMaterial("我的语气", "我习惯写短句，记录真实细节。", null);
+        when(gateway.next(anyList(), eq(false), any(Duration.class)))
+                .thenReturn(new ModelReply("{" + "\"title\":\"窗边\",\"body\":\"今天坐了窗边。\",\"hashtags\":[]}", List.of()));
+
+        service.generate(image, "重点写窗边", List.of(material));
+
+        verify(gateway).next(org.mockito.ArgumentMatchers.argThat(messages -> {
+            Object content = messages.get(1).toRequest().get("content");
+            if (!(content instanceof List<?> parts) || !(parts.get(0) instanceof Map<?, ?> text)) return false;
+            String prompt = text.get("text").toString();
+            return prompt.contains("我的语气") && prompt.contains("我习惯写短句")
+                    && prompt.indexOf("我习惯写短句") < prompt.indexOf("重点写窗边")
+                    && messages.get(0).toRequest().get("content").toString().contains("少用空泛赞美");
+        }), eq(false), any(Duration.class));
+    }
+
+    @Test
     void rejectsOversizedAndNonImageFilesBeforeCallingModel() {
         MultipartFile oversized = mock(MultipartFile.class);
         when(oversized.isEmpty()).thenReturn(false);

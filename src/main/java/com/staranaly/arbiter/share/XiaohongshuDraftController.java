@@ -20,16 +20,43 @@ public class XiaohongshuDraftController {
 
     private final XiaohongshuDraftService service;
     private final XiaohongshuNoteService noteService;
+    private final XiaohongshuMaterialService materialService;
 
-    public XiaohongshuDraftController(XiaohongshuDraftService service, XiaohongshuNoteService noteService) {
+    public XiaohongshuDraftController(XiaohongshuDraftService service, XiaohongshuNoteService noteService,
+            XiaohongshuMaterialService materialService) {
         this.service = service;
         this.noteService = noteService;
+        this.materialService = materialService;
     }
 
     @PostMapping(path = "/generate", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public XiaohongshuDraftResponse generate(@RequestParam("image") MultipartFile image,
-            @RequestParam(value = "requirements", defaultValue = "") String requirements) {
-        return service.generate(image, requirements);
+            @RequestParam(value = "requirements", defaultValue = "") String requirements,
+            @RequestParam(value = "materialIds", required = false) List<Long> materialIds) {
+        return service.generate(image, requirements, materialService.selected(materialIds));
+    }
+
+    @GetMapping("/materials")
+    public List<XiaohongshuMaterialResponse> materials() {
+        return materialService.list();
+    }
+
+    @PostMapping(path = "/materials", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public XiaohongshuMaterialResponse createMaterial(@RequestParam String name,
+            @RequestParam(required = false) String content, @RequestParam(required = false) MultipartFile file) {
+        return materialService.create(name, content, file);
+    }
+
+    @PutMapping(path = "/materials/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public XiaohongshuMaterialResponse updateMaterial(@PathVariable long id, @RequestParam String name,
+            @RequestParam(required = false) String content, @RequestParam(required = false) MultipartFile file) {
+        return materialService.update(id, name, content, file);
+    }
+
+    @DeleteMapping("/materials/{id}")
+    public ResponseEntity<Void> deleteMaterial(@PathVariable long id) {
+        materialService.delete(id);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/notes")

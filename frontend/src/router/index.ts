@@ -41,6 +41,12 @@ const router = createRouter({
       meta: { space: '分享空间' },
       component: () => import('@/views/XiaohongshuView.vue'),
     },
+    {
+      path: '/share/xiaohongshu/materials',
+      name: 'share-xiaohongshu-materials',
+      meta: { space: '分享空间' },
+      component: () => import('@/views/XiaohongshuView.vue'),
+    },
     { path: '/:pathMatch(.*)*', redirect: '/tasks' },
   ],
 })

@@ -55,6 +55,7 @@ const spaceLabel = computed(() => typeof route.meta.space === 'string' ? route.m
         <nav class="site-nav site-nav--nested" aria-label="小红书导航">
           <RouterLink class="site-nav__link" to="/share/xiaohongshu" exact-active-class="router-link-active">图文创作</RouterLink>
           <RouterLink class="site-nav__link" to="/share/xiaohongshu/records">创作记录</RouterLink>
+          <RouterLink class="site-nav__link" to="/share/xiaohongshu/materials">素材管理</RouterLink>
         </nav>
       </div>
     </aside>
