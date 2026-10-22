@@ -1283,6 +1283,104 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+.share-library {
+  margin-top: 24px;
+  padding: 30px;
+}
+
+.share-library__heading,
+.share-library__item,
+.share-library__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.share-library__heading h2 {
+  margin: 0;
+  color: var(--sky-dark);
+  font-size: 21px;
+}
+
+.share-library__heading .eyebrow {
+  margin-bottom: 5px;
+}
+
+.share-library__tabs {
+  display: flex;
+  gap: 8px;
+  margin: 22px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.share-library__tabs button {
+  padding: 10px 16px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.share-library__tabs button.is-active {
+  border-bottom-color: var(--pink);
+  color: var(--sky-dark);
+}
+
+.share-library__empty {
+  margin: 0;
+  padding: 28px;
+  border-radius: 14px;
+  background: var(--cloud);
+  color: var(--muted);
+  text-align: center;
+}
+
+.share-library__list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.share-library__item {
+  min-width: 0;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: linear-gradient(110deg, #fff, var(--cloud));
+}
+
+.share-library__item > div:first-child {
+  min-width: 0;
+}
+
+.share-library__item strong {
+  color: var(--ink);
+}
+
+.share-library__item p {
+  overflow: hidden;
+  max-width: 700px;
+  margin: 6px 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.share-library__item span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.share-library__actions {
+  flex: none;
+  justify-content: flex-end;
+}
+
 @media (max-width: 980px) {
   .app-shell {
     grid-template-columns: 200px minmax(0, 1fr);
@@ -1432,8 +1530,14 @@ h1 {
   }
 
   .share-compose,
-  .share-result {
+  .share-result,
+  .share-library {
     padding: 24px 20px;
+  }
+
+  .share-library__item {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .upload-control {

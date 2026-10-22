@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { generateXiaohongshuDraft, type XiaohongshuDraft } from '@/api/sharing'
+import { deleteXiaohongshuNote, generateXiaohongshuDraft, listXiaohongshuNotes,
+  loadXiaohongshuImage, markXiaohongshuNotePublished, saveXiaohongshuNote,
+  type XiaohongshuDraft, type XiaohongshuNote } from '@/api/sharing'
 
 const maxImageBytes = 20_000_000
 const supportedTypes = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
@@ -20,9 +22,32 @@ const publishStatus = ref('')
 const extensionReady = ref(false)
 const preparingPublish = ref(false)
 const pendingRequestId = ref('')
+const currentNote = ref<XiaohongshuNote | null>(null)
+const imageChanged = ref(false)
+const savedNotes = ref<XiaohongshuNote[]>([])
+const publishedNotes = ref<XiaohongshuNote[]>([])
+const activeTab = ref<'DRAFT' | 'PUBLISHED'>('DRAFT')
+const loadingNotes = ref(false)
+const loadingNote = ref(false)
+const saving = ref(false)
+const libraryError = ref('')
+const saveStatus = ref('')
 let publishTimeout = 0
 
 const imageSize = computed(() => image.value ? `${(image.value.size / 1_000_000).toFixed(1)} MB` : '')
+const isPublished = computed(() => currentNote.value?.status === 'PUBLISHED')
+const isDirty = computed(() => {
+  const note = currentNote.value
+  if (!note || !draft.value) return false
+  return imageChanged.value || note.requirements !== requirements.value.trim()
+    || note.title !== draft.value.title.trim() || note.body !== draft.value.body.trim()
+    || note.tagsText !== tagsText.value.trim()
+})
+const visibleNotes = computed(() => activeTab.value === 'DRAFT' ? savedNotes.value : publishedNotes.value)
+function formatNoteTime(value: string) {
+  return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' })
+    .format(new Date(`${value}Z`))
+}
 const canShareImage = computed(() => {
   if (!image.value || typeof navigator.share !== 'function' || typeof navigator.canShare !== 'function') return false
   try {
@@ -46,9 +71,11 @@ function selectImage(event: Event) {
     error.value = '图片必须非空，且不能超过 20 MB。'
     return
   }
-  clearImage()
+  if (imageUrl.value) URL.revokeObjectURL(imageUrl.value)
   image.value = file
   imageUrl.value = URL.createObjectURL(file)
+  imageChanged.value = true
+  saveStatus.value = ''
 }
 
 function clearImage() {
@@ -58,16 +85,139 @@ function clearImage() {
   draft.value = null
   copyStatus.value = ''
   publishStatus.value = ''
+  currentNote.value = null
+  imageChanged.value = false
 }
 
-function invalidateDraft() {
-  draft.value = null
+function resetEditor() {
+  clearImage()
+  requirements.value = ''
+  tagsText.value = ''
+  error.value = ''
+  saveStatus.value = ''
+}
+
+function startNew() {
+  if (generating.value || preparingPublish.value || saving.value || loadingNote.value) return
+  if ((isDirty.value || (draft.value && !currentNote.value))
+      && !window.confirm('当前修改尚未保存，确定开始新创作吗？')) return
+  resetEditor()
+}
+
+function edited() {
   copyStatus.value = ''
   publishStatus.value = ''
+  saveStatus.value = ''
+}
+
+async function refreshNotes() {
+  loadingNotes.value = true
+  libraryError.value = ''
+  try {
+    const [drafts, published] = await Promise.all([
+      listXiaohongshuNotes('DRAFT'), listXiaohongshuNotes('PUBLISHED'),
+    ])
+    savedNotes.value = drafts
+    publishedNotes.value = published
+  } catch (cause) {
+    libraryError.value = cause instanceof Error ? cause.message : '读取文案列表失败。'
+  } finally {
+    loadingNotes.value = false
+  }
+}
+
+async function openNote(note: XiaohongshuNote) {
+  if (loadingNote.value || saving.value || generating.value || preparingPublish.value) return
+  if ((isDirty.value || (draft.value && !currentNote.value))
+      && !window.confirm('当前修改尚未保存，确定打开其他文案吗？')) return
+  loadingNote.value = true
+  libraryError.value = ''
+  try {
+    const file = await loadXiaohongshuImage(note)
+    resetEditor()
+    image.value = file
+    imageUrl.value = URL.createObjectURL(file)
+    requirements.value = note.requirements
+    draft.value = { title: note.title, body: note.body, hashtags: [] }
+    tagsText.value = note.tagsText
+    currentNote.value = note
+    imageChanged.value = false
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  } catch (cause) {
+    libraryError.value = cause instanceof Error ? cause.message : '打开文案失败。'
+  } finally {
+    loadingNote.value = false
+  }
+}
+
+async function saveNote() {
+  if (saving.value || generating.value || !draft.value || !image.value || isPublished.value) return
+  error.value = ''
+  saveStatus.value = ''
+  const title = draft.value.title.trim()
+  const body = draft.value.body.trim()
+  const tags = tagsText.value.trim()
+  if (!requirements.value.trim() || requirements.value.trim().length > 2000) {
+    error.value = '请填写不超过 2000 字的发布要求。'
+    return
+  }
+  if (!title || Array.from(title).length > 20) {
+    error.value = '标题需为 1 至 20 字。'
+    return
+  }
+  if (!body || Array.from([body, tags].filter(Boolean).join('\n\n')).length > 1000) {
+    error.value = '正文与话题合计不能超过 1000 字。'
+    return
+  }
+  saving.value = true
+  try {
+    const saved = await saveXiaohongshuNote({
+      image: currentNote.value && !imageChanged.value ? null : image.value,
+      requirements: requirements.value.trim(), title, body, tagsText: tags,
+    }, currentNote.value?.id)
+    currentNote.value = saved
+    imageChanged.value = false
+    activeTab.value = 'DRAFT'
+    saveStatus.value = '文案已保存，可以稍后从草稿列表继续编辑或发布。'
+    await refreshNotes()
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '保存失败，请稍后重试。'
+  } finally {
+    saving.value = false
+  }
+}
+
+async function markPublished() {
+  const note = currentNote.value
+  if (!note || isDirty.value || saving.value || preparingPublish.value) return
+  if (!window.confirm('确认已经在小红书完成发布？确认后将移入已发布文案。')) return
+  saving.value = true
+  try {
+    currentNote.value = await markXiaohongshuNotePublished(note.id)
+    saveStatus.value = '已移入发布记录。'
+    activeTab.value = 'PUBLISHED'
+    await refreshNotes()
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '标记失败。'
+  } finally {
+    saving.value = false
+  }
+}
+
+async function removeNote(note: XiaohongshuNote) {
+  if (!window.confirm(`确定删除草稿“${note.title}”吗？图片和文案将一并删除。`)) return
+  libraryError.value = ''
+  try {
+    await deleteXiaohongshuNote(note.id)
+    if (currentNote.value?.id === note.id) resetEditor()
+    await refreshNotes()
+  } catch (cause) {
+    libraryError.value = cause instanceof Error ? cause.message : '删除失败。'
+  }
 }
 
 async function generate() {
-  if (generating.value || preparingPublish.value) return
+  if (generating.value || preparingPublish.value || isPublished.value) return
   error.value = ''
   copyStatus.value = ''
   publishStatus.value = ''
@@ -81,11 +231,11 @@ async function generate() {
     return
   }
   generating.value = true
-  draft.value = null
   try {
     const result = await generateXiaohongshuDraft(image.value, request)
     draft.value = result
     tagsText.value = result.hashtags.map((tag) => `#${tag.replace(/^#+/, '')}`).join(' ')
+    saveStatus.value = ''
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '生成失败，请稍后重试。'
   } finally {
@@ -211,6 +361,7 @@ function prepareWebPublish() {
 onMounted(() => {
   window.addEventListener('message', handleExtensionMessage)
   window.postMessage({ source: appSource, kind: 'PING' }, location.origin)
+  void refreshNotes()
 })
 
 onUnmounted(() => {
@@ -227,6 +378,7 @@ onUnmounted(() => {
       <h1>小红书图文创作</h1>
       <p class="page-description">上传图片并告诉星析你的想法，生成可编辑的发布文案。</p>
     </div>
+    <button class="button button--secondary" type="button" :disabled="generating || preparingPublish || saving || loadingNote" @click="startNew">新建图文</button>
   </section>
 
   <div class="share-layout">
@@ -236,7 +388,7 @@ onUnmounted(() => {
         <div class="field">
           <label for="share-image">上传图片 <span class="required">*</span></label>
           <input id="share-image" type="file" accept="image/jpeg,image/png,image/gif,image/webp"
-            :disabled="generating || preparingPublish" @change="selectImage" />
+            :disabled="generating || preparingPublish || isPublished || saving" @change="selectImage" />
           <p class="field-hint">支持 JPEG、PNG、GIF、WebP，单张最大 20 MB。</p>
         </div>
         <div v-if="image && imageUrl" class="share-image-preview">
@@ -244,19 +396,19 @@ onUnmounted(() => {
           <div>
             <strong>{{ image.name }}</strong>
             <span class="muted">{{ imageSize }}</span>
-            <button class="text-button" type="button" :disabled="generating || preparingPublish" @click="clearImage">移除图片</button>
+          <button v-if="!isPublished" class="text-button" type="button" :disabled="generating || preparingPublish || saving" @click="startNew">清空当前创作</button>
           </div>
         </div>
         <div class="field">
           <label for="share-requirements">文字要求 <span class="required">*</span></label>
           <textarea id="share-requirements" v-model="requirements" rows="7" maxlength="2000"
-            :disabled="generating || preparingPublish" placeholder="例如：根据图片写一篇周末探店笔记，语气轻松，突出环境和拍照氛围。"
-            @input="invalidateDraft"></textarea>
+            :disabled="generating || preparingPublish || isPublished || saving" placeholder="例如：根据图片写一篇周末探店笔记，语气轻松，突出环境和拍照氛围。"
+            @input="edited"></textarea>
           <p class="field-hint">模型会识别图片，再结合你的要求生成标题、正文和话题。最多 2000 字。</p>
         </div>
         <p v-if="error" class="inline-error" role="alert">{{ error }}</p>
         <div class="form-actions">
-          <button class="button" type="submit" :disabled="generating || preparingPublish">
+          <button v-if="!isPublished" class="button" type="submit" :disabled="generating || preparingPublish || saving">
             {{ generating ? '正在识别图片并生成…' : draft ? '重新生成' : '生成发布预览' }}
           </button>
         </div>
@@ -269,7 +421,7 @@ onUnmounted(() => {
           <p class="eyebrow">发布模板</p>
           <h2>笔记预览</h2>
         </div>
-        <span v-if="draft" class="status-badge">可编辑</span>
+        <span v-if="draft" class="status-badge">{{ isPublished ? '已发布记录' : currentNote ? isDirty ? '有未保存修改' : '已保存草稿' : '未保存' }}</span>
       </div>
       <div v-if="!draft" class="share-result__empty">
         <span aria-hidden="true">✦</span>
@@ -280,33 +432,40 @@ onUnmounted(() => {
           <img :src="imageUrl" :alt="image?.name || '发布图片'" />
           <div class="share-note__content">
             <label for="share-title">标题</label>
-            <input id="share-title" v-model="draft.title" maxlength="20" :disabled="preparingPublish" />
+            <input id="share-title" v-model="draft.title" maxlength="20" :disabled="generating || preparingPublish || saving || isPublished" @input="edited" />
             <label for="share-body">正文</label>
-            <textarea id="share-body" v-model="draft.body" rows="10" maxlength="5000" :disabled="preparingPublish"></textarea>
+            <textarea id="share-body" v-model="draft.body" rows="10" maxlength="5000" :disabled="generating || preparingPublish || saving || isPublished" @input="edited"></textarea>
             <label for="share-tags">话题标签</label>
-            <input id="share-tags" v-model="tagsText" maxlength="300" placeholder="#话题1 #话题2" :disabled="preparingPublish" />
+            <input id="share-tags" v-model="tagsText" maxlength="300" placeholder="#话题1 #话题2" :disabled="generating || preparingPublish || saving || isPublished" @input="edited" />
             <p class="field-hint">发布时标题最多 20 字，正文与话题合计最多 1000 字。</p>
           </div>
         </div>
         <div class="share-result__actions">
+          <button v-if="!isPublished" class="button" type="button" :disabled="saving || generating || preparingPublish || !image || (!isDirty && !!currentNote)"
+            @click="saveNote">{{ saving ? '正在保存…' : currentNote ? '保存修改' : '保存当前文案' }}</button>
           <button class="button button--secondary" type="button" @click="copyTitle">复制标题</button>
           <button class="button button--secondary" type="button" @click="copyBody">复制正文与话题</button>
-          <button v-if="extensionReady" class="button" type="button" :disabled="preparingPublish"
+          <button v-if="!isPublished && extensionReady" class="button" type="button" :disabled="preparingPublish || saving"
             @click="publishWithExtension">{{ preparingPublish ? '正在交给扩展…' : '去发布（自动填入）' }}</button>
-          <button v-else-if="canShareImage" class="button" type="button" @click="shareViaDevice">去发布（系统分享）</button>
-          <a v-else class="button" :href="publishUrl" target="_blank" rel="noopener noreferrer"
+          <button v-else-if="!isPublished && canShareImage" class="button" type="button" :disabled="saving" @click="shareViaDevice">去发布（系统分享）</button>
+          <a v-else-if="!isPublished" class="button" :href="publishUrl" target="_blank" rel="noopener noreferrer"
             @click="prepareWebPublish">复制正文并打开发布页</a>
-          <a v-if="extensionReady || canShareImage" class="text-button share-result__web-link" :href="publishUrl"
+          <a v-if="!isPublished && (extensionReady || canShareImage)" class="text-button share-result__web-link" :href="publishUrl"
             target="_blank" rel="noopener noreferrer" @click="prepareWebPublish">打开网页版</a>
+          <button v-if="currentNote && !isPublished" class="button button--secondary" type="button"
+            :disabled="saving || preparingPublish || isDirty" @click="markPublished">已在小红书发布</button>
         </div>
+        <p v-if="error" class="inline-error" role="alert">{{ error }}</p>
+        <p v-if="saveStatus" class="field-hint" role="status">{{ saveStatus }}</p>
         <p v-if="copyStatus" class="field-hint" role="status">{{ copyStatus }}</p>
         <p v-if="publishStatus" class="field-hint" role="status">{{ publishStatus }}</p>
-        <p class="field-hint">{{ extensionReady
+        <p v-if="currentNote && isDirty" class="field-hint">修改后请先保存，再标记为已发布。</p>
+        <p v-if="!isPublished" class="field-hint">{{ extensionReady
           ? '扩展会打开小红书并尝试填入原图、标题和正文；请检查后亲自点击发布。'
           : canShareImage
             ? '系统分享会尝试发送原图、标题和正文；请选择小红书，并检查实际带入的内容。'
             : '网页版无法自动填入图片和文案；点击后会复制正文与话题并打开小红书，请手动上传原图、粘贴正文和标题。' }}</p>
-        <details v-if="!extensionReady" class="share-extension-help">
+        <details v-if="!isPublished && !extensionReady" class="share-extension-help">
           <summary>电脑自动填入：安装浏览器扩展</summary>
           <ol>
             <li>在 Chrome 或 Edge 的扩展管理页开启“开发者模式”。</li>
@@ -317,4 +476,41 @@ onUnmounted(() => {
       </template>
     </section>
   </div>
+
+  <section class="panel share-library" aria-label="我的小红书文案">
+    <div class="share-library__heading">
+      <div>
+        <p class="eyebrow">我的文案</p>
+        <h2>创作记录</h2>
+      </div>
+      <button class="text-button" type="button" :disabled="loadingNotes" @click="refreshNotes">刷新列表</button>
+    </div>
+    <div class="share-library__tabs" role="tablist" aria-label="文案状态">
+      <button type="button" role="tab" :aria-selected="activeTab === 'DRAFT'" :class="{ 'is-active': activeTab === 'DRAFT' }"
+        @click="activeTab = 'DRAFT'">已保存 {{ savedNotes.length }}</button>
+      <button type="button" role="tab" :aria-selected="activeTab === 'PUBLISHED'" :class="{ 'is-active': activeTab === 'PUBLISHED' }"
+        @click="activeTab = 'PUBLISHED'">已发布 {{ publishedNotes.length }}</button>
+    </div>
+    <p v-if="libraryError" class="inline-error" role="alert">{{ libraryError }}</p>
+    <p v-if="loadingNotes" class="field-hint">正在读取文案…</p>
+    <p v-else-if="visibleNotes.length === 0" class="share-library__empty">
+      {{ activeTab === 'DRAFT' ? '还没有保存的文案。生成后点击“保存当前文案”。' : '还没有已发布的文案。发布成功后可从草稿中手动标记。' }}
+    </p>
+    <ul v-else class="share-library__list">
+      <li v-for="note in visibleNotes" :key="note.id" class="share-library__item">
+        <div>
+          <strong>{{ note.title }}</strong>
+          <p>{{ note.body }}</p>
+          <span>{{ activeTab === 'DRAFT' ? '更新于' : '发布于' }} {{ formatNoteTime(note.publishedAt || note.updatedAt) }}</span>
+        </div>
+        <div class="share-library__actions">
+          <button class="button button--secondary" type="button" :disabled="loadingNote || saving || generating || preparingPublish" @click="openNote(note)">
+            {{ activeTab === 'DRAFT' ? '打开编辑 / 发布' : '查看文案' }}
+          </button>
+          <button v-if="note.status === 'DRAFT'" class="text-button text-button--danger" type="button"
+            :disabled="loadingNote || saving || generating || preparingPublish" @click="removeNote(note)">删除</button>
+        </div>
+      </li>
+    </ul>
+  </section>
 </template>

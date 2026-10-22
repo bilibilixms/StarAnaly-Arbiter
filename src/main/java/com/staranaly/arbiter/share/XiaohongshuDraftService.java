@@ -110,7 +110,7 @@ public class XiaohongshuDraftService {
         return new ModelServiceException(HttpStatus.BAD_GATEWAY, "模型返回的文案格式不正确，请重新生成。");
     }
 
-    private static String detectMimeType(byte[] bytes) {
+    static String detectMimeType(byte[] bytes) {
         if (bytes.length >= 3 && (bytes[0] & 0xff) == 0xff
                 && (bytes[1] & 0xff) == 0xd8 && (bytes[2] & 0xff) == 0xff) {
             return "image/jpeg";
