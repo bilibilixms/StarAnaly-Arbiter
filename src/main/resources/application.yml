@@ -13,8 +13,8 @@ spring:
     enabled: true
   servlet:
     multipart:
-      max-file-size: 5120KB
-      max-request-size: 6MB
+      max-file-size: 20MB
+      max-request-size: 21MB
 
 staranaly:
   model:

@@ -13,7 +13,7 @@
 - 支持上传 CSV、XLS、XLSX 表格，预览和筛选数据、分组求和，并通过模型工具保存结构化分析结果。
 - 支持上传 TXT、Markdown、PDF、DOC、DOCX 资料，检索提取的文字片段，记录执行中的来源引用，并删除资料。
 - 兼容 OpenAI Chat Completions 的模型调用；任务状态包含 `PENDING`、`RUNNING`、`SUCCEEDED`、`FAILED`。
-- `frontend/` 中的 Vue 3 + TypeScript 工作台，可创建任务、上传文件、发起任务执行并查看步骤和结果。
+- `frontend/` 中的 Vue 3 + TypeScript 工作台，可创建任务、上传文件、发起任务执行并查看步骤和结果；分享空间可用图片与文字要求生成小红书图文笔记预览。
 
 ## 本地运行
 
@@ -61,6 +61,12 @@
 应用默认连接 `localhost:3307` 上的 `staranaly` 数据库，并使用 `MYSQL_USER`、`MYSQL_PASSWORD`。如果数据库不在本机，可以设置 `DB_HOST`、`DB_PORT` 和 `DB_NAME`。首次启动时 Flyway 会创建任务、对话、执行记录、CSV 和资料相关表。
 
 MySQL 官方镜像只在首次初始化数据目录时创建 `MYSQL_USER`。如果已有旧的 `mysql-data` 卷，需在现有数据库中手动创建该用户并授予 `staranaly` 数据库权限，或使用全新数据卷；不要删除仍需保留数据的卷。
+
+## 小红书图文创作
+
+在“分享空间 → 小红书”选择一张 JPEG、PNG、GIF 或 WebP 图片（最大 20 MB），填写不超过 2000 字的要求，即可让支持视觉输入的模型识别图片并生成标题、正文和话题。默认的 `deepseek-flash` 支持[图文输入](https://api-docs.deepseek.com/guides/vision/)；若使用其他兼容模型，需要确认该模型也支持图片。生成的文案可在预览中修改和复制。图片不存入项目数据库，页面关闭后需重新选择。
+
+“去发布”会打开小红书创作服务平台的图文发布页。请在该页面自行登录、上传原图、粘贴文案并确认发布；项目当前不会自动代发笔记。
 
 ## API 示例
 

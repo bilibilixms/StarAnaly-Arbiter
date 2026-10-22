@@ -27,7 +27,7 @@ public class CsvUploadExceptionHandler {
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<ProblemDetail> tooLarge(MaxUploadSizeExceededException exception) {
         ProblemDetail detail = ProblemDetail.forStatusAndDetail(HttpStatus.PAYLOAD_TOO_LARGE,
-                "上传文件不能超过 5 MiB；TXT 和 Markdown 另有 1 MiB 限制。");
+                "上传文件超过服务器上限。任务文件最多 5 MiB，分享图片最多 20 MB。");
         return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(detail);
     }
 }
