@@ -8,11 +8,10 @@ const spaceLabel = computed(() => typeof route.meta.space === 'string' ? route.m
 
 <template>
   <div class="app-shell">
-    <aside class="site-rail" aria-label="空间快捷入口">
-      <RouterLink class="site-rail__logo" to="/tasks" aria-label="星析首页">✦</RouterLink>
-      <RouterLink class="site-rail__workspace" :class="{ 'site-rail__workspace--active': spaceLabel === '工作空间' }" to="/tasks" aria-label="工作空间">星</RouterLink>
-      <RouterLink class="site-rail__share" :class="{ 'site-rail__share--active': spaceLabel === '分享空间' }" to="/share/douyin" aria-label="分享空间">享</RouterLink>
-      <RouterLink class="site-rail__add" to="/tasks/new" aria-label="创建任务">+</RouterLink>
+    <aside class="site-rail" aria-label="当前用户：个人用户">
+      <span class="site-rail__avatar" aria-hidden="true">我</span>
+      <span class="site-rail__name">个人用户</span>
+      <span class="site-rail__hint">个人使用</span>
     </aside>
 
     <aside class="site-sidebar">

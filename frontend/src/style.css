@@ -71,72 +71,38 @@ a {
   display: flex;
   align-items: center;
   flex-direction: column;
-  gap: 18px;
-  padding: 20px 10px;
+  gap: 8px;
+  padding: 28px 8px;
   background: linear-gradient(180deg, #d6efff 0%, #eff8ff 52%, #ffeaf5 100%);
+  text-align: center;
 }
 
-.site-rail__logo,
-.site-rail__workspace,
-.site-rail__share,
-.site-rail__add {
+.site-rail__avatar {
   display: grid;
-  width: 42px;
-  height: 42px;
+  width: 46px;
+  height: 46px;
   flex: none;
   place-items: center;
-  border-radius: 12px;
-  font-weight: 750;
-}
-
-.site-rail__logo {
-  color: var(--pink);
-  font-size: 28px;
-  text-shadow: 0 5px 16px rgb(223 117 173 / 30%);
-}
-
-.site-rail__workspace,
-.site-rail__share {
-  border: 1px solid rgb(255 255 255 / 80%);
-  background: rgb(255 255 255 / 65%);
-  color: var(--sky-deep);
-}
-
-.site-rail__share {
-  color: #a75282;
-}
-
-.site-rail__workspace--active {
-  border-color: transparent;
-  background: linear-gradient(145deg, #55afe7, #79a8e9 75%, #d78bc8);
-  color: #fff;
-  box-shadow: 0 7px 18px rgb(67 149 213 / 24%);
-}
-
-.site-rail__share--active {
-  border-color: transparent;
-  background: linear-gradient(145deg, #e69fc4, #ce79ae);
-  color: #fff;
-  box-shadow: 0 7px 18px rgb(212 112 167 / 22%);
-}
-
-.site-rail__workspace:hover:not(.site-rail__workspace--active),
-.site-rail__share:hover:not(.site-rail__share--active) {
-  background: #fff;
-}
-
-.site-rail__add {
-  margin-top: auto;
-  border: 1px dashed #b7d7ed;
+  border: 2px solid rgb(255 255 255 / 90%);
   border-radius: 50%;
-  color: var(--muted);
-  font-size: 25px;
-  font-weight: 400;
+  background: linear-gradient(145deg, #77bdec, #dc96c3);
+  box-shadow: 0 7px 18px rgb(67 149 213 / 24%);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 700;
 }
 
-.site-rail__add:hover {
-  background: var(--cloud);
-  color: var(--sky-dark);
+.site-rail__name {
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.site-rail__hint {
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
 }
 
 .site-sidebar {
