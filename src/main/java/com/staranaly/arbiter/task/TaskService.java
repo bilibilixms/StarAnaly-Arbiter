@@ -1,5 +1,6 @@
 package com.staranaly.arbiter.task;
 
+import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -9,6 +10,7 @@ import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -50,10 +52,20 @@ public class TaskService {
         List<TaskSearchCandidate> candidates = status == null
                 ? repository.findSearchCandidates() : repository.findSearchCandidatesByStatus(status);
         int maxDistance = TaskTitleMatcher.maxDistance(term);
+        Sort.Order timeOrder = pageable.getSort().getOrderFor("createdAt");
+        Comparator<Match> matchOrder = Comparator.comparingInt(Match::distance)
+                .thenComparing(Match::id, Comparator.reverseOrder());
+        if (timeOrder != null) {
+            matchOrder = Comparator.comparing(Match::createdAt).thenComparing(Match::id);
+            if (timeOrder.isDescending()) {
+                matchOrder = matchOrder.reversed();
+            }
+        }
         List<Long> matchingIds = candidates.stream()
-                .map(candidate -> new Match(candidate.getId(), TaskTitleMatcher.distance(candidate.getTitle(), term)))
+                .map(candidate -> new Match(candidate.getId(), candidate.getCreatedAt(),
+                        TaskTitleMatcher.distance(candidate.getTitle(), term)))
                 .filter(match -> match.distance() <= maxDistance)
-                .sorted(Comparator.comparingInt(Match::distance).thenComparing(Match::id, Comparator.reverseOrder()))
+                .sorted(matchOrder)
                 .map(Match::id)
                 .toList();
         int from = (int) Math.min(pageable.getOffset(), matchingIds.size());
@@ -66,6 +78,6 @@ public class TaskService {
         return new PageImpl<>(content, pageable, matchingIds.size());
     }
 
-    private record Match(Long id, int distance) {
+    private record Match(Long id, LocalDateTime createdAt, int distance) {
     }
 }

@@ -444,25 +444,44 @@ h1 {
 }
 
 .task-filters__status:focus-visible,
-.task-filters__search input:focus-visible {
+.task-filters__search input:focus-visible,
+.task-filters__sort select:focus-visible {
   outline: 3px solid var(--pink-line);
   outline-offset: 2px;
 }
 
+.task-filters__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px 22px;
+}
+
 .task-filters__search {
+  display: flex;
+  flex: 1 1 420px;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.task-filters__sort {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.task-filters__search label {
+.task-filters__search label,
+.task-filters__sort label {
   color: var(--ink-soft);
   font-size: 13px;
   font-weight: 700;
   white-space: nowrap;
 }
 
-.task-filters__search input {
+.task-filters__search input,
+.task-filters__sort select {
   width: min(100%, 360px);
   min-width: 0;
   padding: 9px 12px;
@@ -472,6 +491,11 @@ h1 {
   color: var(--ink);
   font: inherit;
   font-size: 13px;
+}
+
+.task-filters__sort select {
+  width: 142px;
+  cursor: pointer;
 }
 
 .task-table {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from 'vue'
-import { listTasks, type TaskPage, type TaskStatus } from '@/api/tasks'
+import { listTasks, type TaskPage, type TaskStatus, type TaskTimeOrder } from '@/api/tasks'
 import { formatCreatedAt, statusLabel } from '@/task/format'
 
 const statuses: Array<{ value: TaskStatus | ''; label: string }> = [
@@ -12,6 +12,7 @@ const statuses: Array<{ value: TaskStatus | ''; label: string }> = [
 ]
 const page = ref(0)
 const status = ref<TaskStatus | ''>('')
+const timeOrder = ref<TaskTimeOrder>('newest')
 const searchInput = ref('')
 const query = ref('')
 const result = ref<TaskPage | null>(null)
@@ -27,7 +28,7 @@ async function loadTasks() {
   result.value = null
 
   try {
-    const response = await listTasks(page.value, status.value || undefined, query.value)
+    const response = await listTasks(page.value, status.value || undefined, query.value, timeOrder.value)
     if (version === requestVersion) result.value = response
   } catch (cause) {
     if (version === requestVersion) error.value = cause instanceof Error ? cause.message : '加载任务失败。'
@@ -52,6 +53,11 @@ function selectStatus(next: TaskStatus | '') {
   query.value = searchInput.value.trim()
   if (searchTimer !== undefined) clearTimeout(searchTimer)
   searchTimer = undefined
+  page.value = 0
+  void loadTasks()
+}
+
+function changeTimeOrder() {
   page.value = 0
   void loadTasks()
 }
@@ -92,7 +98,7 @@ onUnmounted(() => {
     <div>
       <p class="eyebrow">工作空间 / 任务</p>
       <h1>任务列表</h1>
-      <p class="page-description">按状态浏览任务，或输入任务名查找；同名任务会分别列出。</p>
+      <p class="page-description">按状态和创建时间浏览任务，或输入任务名查找；同名任务会分别列出。</p>
     </div>
     <RouterLink class="button" to="/tasks/new">新建任务</RouterLink>
   </section>
@@ -106,12 +112,21 @@ onUnmounted(() => {
           {{ option.label }}
         </button>
       </div>
-      <form class="task-filters__search" role="search" @submit.prevent="applySearch">
-        <label for="task-title-search">查找任务</label>
-        <input id="task-title-search" v-model="searchInput" type="search" maxlength="200"
-          placeholder="输入任务名，支持同拼音汉字和少量错字" />
-        <button class="button button--secondary button--small" type="submit">搜索</button>
-      </form>
+      <div class="task-filters__controls">
+        <form class="task-filters__search" role="search" @submit.prevent="applySearch">
+          <label for="task-title-search">查找任务</label>
+          <input id="task-title-search" v-model="searchInput" type="search" maxlength="200"
+            placeholder="输入任务名，支持同拼音汉字和少量错字" />
+          <button class="button button--secondary button--small" type="submit">搜索</button>
+        </form>
+        <div class="task-filters__sort">
+          <label for="task-time-order">创建时间</label>
+          <select id="task-time-order" v-model="timeOrder" @change="changeTimeOrder">
+            <option value="newest">最新优先</option>
+            <option value="oldest">最早优先</option>
+          </select>
+        </div>
+      </div>
     </div>
     <div v-if="loading" class="message" role="status">正在加载任务…</div>
     <div v-else-if="error" class="message message--error" role="alert">

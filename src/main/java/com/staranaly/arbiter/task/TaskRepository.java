@@ -17,10 +17,10 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 
     Page<Task> findByStatus(TaskStatus status, Pageable pageable);
 
-    @Query("select task.id as id, task.title as title from Task task")
+    @Query("select task.id as id, task.title as title, task.createdAt as createdAt from Task task")
     List<TaskSearchCandidate> findSearchCandidates();
 
-    @Query("select task.id as id, task.title as title from Task task where task.status = :status")
+    @Query("select task.id as id, task.title as title, task.createdAt as createdAt from Task task where task.status = :status")
     List<TaskSearchCandidate> findSearchCandidatesByStatus(@Param("status") TaskStatus status);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

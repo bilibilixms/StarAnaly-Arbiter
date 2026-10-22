@@ -8,6 +8,7 @@ export interface Task {
 }
 
 export type TaskStatus = 'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED'
+export type TaskTimeOrder = 'newest' | 'oldest'
 
 export interface TaskMessage {
   id: number
@@ -151,8 +152,11 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return (await response.json()) as T
 }
 
-export function listTasks(page = 0, status?: TaskStatus, query = ''): Promise<TaskPage> {
+export function listTasks(page = 0, status?: TaskStatus, query = '', order: TaskTimeOrder = 'newest'): Promise<TaskPage> {
   const params = new URLSearchParams({ page: String(page), size: '20' })
+  const direction = order === 'oldest' ? 'asc' : 'desc'
+  params.append('sort', `createdAt,${direction}`)
+  params.append('sort', `id,${direction}`)
   if (status) params.set('status', status)
   if (query) params.set('query', query)
   return request<TaskPage>(`/tasks?${params.toString()}`)

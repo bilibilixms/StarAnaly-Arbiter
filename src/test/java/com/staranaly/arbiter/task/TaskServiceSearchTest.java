@@ -6,6 +6,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -36,7 +37,37 @@ class TaskServiceSearchTest {
         verify(repository, times(2)).findSearchCandidatesByStatus(TaskStatus.PENDING);
     }
 
+    @Test
+    void searchSortsByCreationTimeBeforePaginating() {
+        TaskRepository repository = mock(TaskRepository.class);
+        TaskService service = new TaskService(repository);
+        LocalDateTime early = LocalDateTime.of(2026, 10, 18, 2, 0);
+        LocalDateTime late = LocalDateTime.of(2026, 10, 20, 2, 0);
+        when(repository.findSearchCandidates()).thenReturn(List.of(
+                candidate(1L, "分析销售额", early), candidate(2L, "分析销售额", late),
+                candidate(3L, "分析销售额", late)));
+        when(repository.findAllById(any())).thenReturn(List.of(
+                task(1L, "分析销售额"), task(2L, "分析销售额"), task(3L, "分析销售额")));
+
+        Sort newest = Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
+        Sort oldest = Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("id"));
+        Page<TaskResponse> newestFirst = service.findAll(PageRequest.of(0, 2, newest), null, "分析销售额");
+        Page<TaskResponse> newestSecond = service.findAll(PageRequest.of(1, 2, newest), null, "分析销售额");
+        Page<TaskResponse> oldestFirst = service.findAll(PageRequest.of(0, 2, oldest), null, "分析销售额");
+        Page<TaskResponse> oldestSecond = service.findAll(PageRequest.of(1, 2, oldest), null, "分析销售额");
+
+        assertThat(newestFirst.getContent()).extracting(TaskResponse::id).containsExactly(3L, 2L);
+        assertThat(newestSecond.getContent()).extracting(TaskResponse::id).containsExactly(1L);
+        assertThat(oldestFirst.getContent()).extracting(TaskResponse::id).containsExactly(1L, 2L);
+        assertThat(oldestSecond.getContent()).extracting(TaskResponse::id).containsExactly(3L);
+        assertThat(newestFirst.getTotalElements()).isEqualTo(3);
+    }
+
     private static TaskSearchCandidate candidate(Long id, String title) {
+        return candidate(id, title, LocalDateTime.of(2026, 10, 20, 2, 0));
+    }
+
+    private static TaskSearchCandidate candidate(Long id, String title, LocalDateTime createdAt) {
         return new TaskSearchCandidate() {
             @Override
             public Long getId() {
@@ -46,6 +77,11 @@ class TaskServiceSearchTest {
             @Override
             public String getTitle() {
                 return title;
+            }
+
+            @Override
+            public LocalDateTime getCreatedAt() {
+                return createdAt;
             }
         };
     }

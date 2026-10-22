@@ -4,18 +4,22 @@ import java.time.Instant;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -96,6 +100,20 @@ class TaskControllerTest {
                 .andExpect(jsonPath("$.number").value(0))
                 .andExpect(jsonPath("$.size").value(20))
                 .andExpect(jsonPath("$.pageable").doesNotExist());
+    }
+
+    @Test
+    void passesCreationTimeSortToTaskService() throws Exception {
+        when(service.findAll(any(), isNull(), isNull()))
+                .thenReturn(new PageImpl<>(List.<TaskResponse>of(), PageRequest.of(0, 20), 0));
+
+        mvc.perform(get("/api/tasks").param("sort", "createdAt,asc", "id,asc"))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
+        verify(service).findAll(pageable.capture(), isNull(), isNull());
+        assertThat(pageable.getValue().getSort().getOrderFor("createdAt").isAscending()).isTrue();
+        assertThat(pageable.getValue().getSort().getOrderFor("id").isAscending()).isTrue();
     }
 
     @Test

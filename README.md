@@ -80,9 +80,10 @@ curl -i -X POST http://localhost:8080/api/tasks \
 curl http://localhost:8080/api/tasks/1
 curl 'http://localhost:8080/api/tasks?page=0&size=20'
 curl 'http://localhost:8080/api/tasks?page=0&size=20&status=SUCCEEDED&query=%E9%94%80%E5%94%AE%E9%A2%9D'
+curl 'http://localhost:8080/api/tasks?page=0&size=20&sort=createdAt,asc&sort=id,asc'
 ```
 
-列表可按 `PENDING`、`RUNNING`、`SUCCEEDED`、`FAILED` 筛选。`query` 搜索任务标题，支持部分名称、同拼音汉字和少量普通错字：例如输入“粉”可找到标题中的“分”（忽略声调）。1～2 字的普通错字不放宽，3～5 字允许 1 处，6 字及以上允许 2 处；优先显示原字匹配，再显示同音字匹配，然后显示普通错字匹配。同名任务按不同 ID 分别显示。搜索在全部任务中匹配后分页，当前面向单用户、小规模任务库。任务不存在时返回 `404`；标题为空或超过 200 字符、描述超过 5000 字符、搜索词超过 200 字符时返回 `400`。
+列表可按 `PENDING`、`RUNNING`、`SUCCEEDED`、`FAILED` 筛选。前端可按创建时间选择“最新优先”或“最早优先”，并在分页前对全部匹配任务排序；时间相同时按任务 ID 稳定排序。API 可通过 `sort=createdAt,asc|desc` 指定时间顺序，不指定时维持原有默认顺序。`query` 搜索任务标题，支持部分名称、同拼音汉字和少量普通错字：例如输入“粉”可找到标题中的“分”（忽略声调）。1～2 字的普通错字不放宽，3～5 字允许 1 处，6 字及以上允许 2 处；未指定时间排序时优先显示原字匹配，再显示同音字匹配，然后显示普通错字匹配。同名任务按不同 ID 分别显示。搜索在全部任务中匹配后分页，当前面向单用户、小规模任务库。任务不存在时返回 `404`；标题为空或超过 200 字符、描述超过 5000 字符、搜索词超过 200 字符时返回 `400`。
 
 向任务发送消息并获取模型回复：
 
