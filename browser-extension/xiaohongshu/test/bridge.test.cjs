@@ -17,6 +17,7 @@ test('detects the extension and acknowledges a publish handoff from the creation
   }
   const chrome = {
     runtime: {
+      getManifest() { return { version: '0.4.0' } },
       onMessage: { addListener(listener) { runtimeListener = listener } },
       async sendMessage(message) {
         sentToBackground.push(message)
@@ -30,6 +31,7 @@ test('detects the extension and acknowledges a publish handoff from the creation
 
   assert.equal(sentToPage[0].message.kind, 'READY')
   assert.equal(sentToPage[0].message.publicationSync, true)
+  assert.equal(sentToPage[0].message.extensionVersion, '0.4.0')
   messageListener({
     source: window,
     origin: location.origin,

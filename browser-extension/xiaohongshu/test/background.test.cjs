@@ -82,7 +82,8 @@ const imageData = 'data:image/png;base64,AA=='
 const draft = {
   noteId: 42,
   title: '周末随拍',
-  body: '晴天出门走走。\n\n#周末记录',
+  body: '晴天出门走走。',
+  topics: ['周末记录'],
   imageName: 'photo.png',
   imageType: 'image/png',
   imageData,
@@ -106,6 +107,7 @@ test('hands the image and text only to the newly opened creator tab', async () =
   const pending = await extension.send({ kind: 'GET_DRAFT' }, creator)
   assert.equal(pending.ok, true)
   assert.equal(pending.draft.body, draft.body)
+  assert.equal(pending.draft.topics[0], '周末记录')
   assert.equal(pending.draft.imageData, imageData)
 
   assert.equal((await extension.send({ kind: 'CLEAR_DRAFT' }, creator)).ok, true)
@@ -119,6 +121,8 @@ test('rejects unrelated pages and invalid drafts', async () => {
   assert.equal((await extension.send({ kind: 'PREPARE', draft }, unrelatedPage)).ok, false)
   assert.equal((await extension.send({ kind: 'PREPARE', draft }, recordsPage)).ok, false)
   assert.equal((await extension.send({ kind: 'PREPARE', draft: { ...draft, title: '字'.repeat(21) } }, app)).ok, false)
+  assert.equal((await extension.send({ kind: 'PREPARE', draft: { ...draft, topics: ['#无效话题'] } }, app)).ok, false)
+  assert.equal((await extension.send({ kind: 'PREPARE', draft: { ...draft, topics: ['重复', '重复'] } }, app)).ok, false)
   assert.equal(extension.openedTabs.length, 0)
   assert.equal(extension.values.has('pendingXiaohongshuDraft'), false)
 })

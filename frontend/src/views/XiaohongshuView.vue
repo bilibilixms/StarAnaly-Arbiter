@@ -26,6 +26,7 @@ const error = ref('')
 const copyStatus = ref('')
 const publishStatus = ref('')
 const extensionReady = ref(false)
+const extensionVersion = ref('')
 const publicationSyncReady = ref(false)
 const preparingPublish = ref(false)
 const pendingRequestId = ref('')
@@ -56,6 +57,10 @@ const processingPublicationEvents = new Set<string>()
 
 const imageSize = computed(() => image.value ? `${(image.value.size / 1_000_000).toFixed(1)} MB` : '')
 const isPublished = computed(() => currentNote.value?.status === 'PUBLISHED')
+const topicExtensionReady = computed(() => {
+  const match = /^(\d+)\.(\d+)\./.exec(extensionVersion.value)
+  return !!match && (Number(match[1]) > 0 || Number(match[2]) >= 4)
+})
 const isDirty = computed(() => {
   const note = currentNote.value
   if (!note || !draft.value) return false
@@ -386,6 +391,14 @@ function bodyWithTags() {
   return [draft.value?.body.trim(), tagsText.value.trim()].filter(Boolean).join('\n\n')
 }
 
+function parseTopics() {
+  const tokens = tagsText.value.trim().split(/\s+/u).filter(Boolean)
+  const topics = tokens.map((token) => token.replace(/^#+/u, ''))
+  if (topics.length > 8 || topics.some((name, index) => !name || !tokens[index].startsWith('#')
+    || name.includes('#') || Array.from(name).length > 30)) return null
+  return [...new Set(topics)]
+}
+
 async function recordAutomaticPublication(eventId: string, noteId: number) {
   if (processingPublicationEvents.has(eventId)) return
   processingPublicationEvents.add(eventId)
@@ -411,6 +424,7 @@ function handleExtensionMessage(event: MessageEvent) {
   if (!message || message.source !== extensionSource) return
   if (message.kind === 'READY') {
     extensionReady.value = true
+    extensionVersion.value = typeof message.extensionVersion === 'string' ? message.extensionVersion : ''
     publicationSyncReady.value = message.publicationSync === true
     return
   }
@@ -442,6 +456,15 @@ function readImage(file: File): Promise<string> {
 async function publishWithExtension() {
   if (!draft.value || !image.value || preparingPublish.value || saving.value || generating.value) return
   publishStatus.value = ''
+  if (!topicExtensionReady.value) {
+    publishStatus.value = '请在 Edge 扩展管理页重新加载星析发布助手 0.4.0，再刷新此页面。'
+    return
+  }
+  const topics = parseTopics()
+  if (!topics) {
+    publishStatus.value = '话题请写成 #话题名，最多 8 个，每个不超过 30 字，并用空格分隔。'
+    return
+  }
   if (!draft.value.title.trim() || Array.from(draft.value.title.trim()).length > 20) {
     publishStatus.value = '请将标题调整为 1 至 20 字后再去发布。'
     return
@@ -461,7 +484,8 @@ async function publishWithExtension() {
     const payload = {
       noteId: note.id,
       title: draft.value.title.trim(),
-      body: bodyWithTags(),
+      body: draft.value.body.trim(),
+      topics,
       imageName: image.value.name,
       imageType: image.value.type,
       imageData: await readImage(image.value),
@@ -628,8 +652,9 @@ onUnmounted(() => {
             @click="saveNote">{{ saving ? '正在保存…' : currentNote ? '保存修改' : '保存当前文案' }}</button>
           <button class="button button--quiet" type="button" @click="copyTitle">复制标题</button>
           <button class="button button--quiet" type="button" @click="copyBody">复制正文与话题</button>
-          <button v-if="!isPublished && extensionReady" class="button" type="button" :disabled="preparingPublish || saving"
+          <button v-if="!isPublished && topicExtensionReady" class="button" type="button" :disabled="preparingPublish || saving"
             @click="publishWithExtension">{{ preparingPublish ? '正在交给扩展…' : '去发布（自动填入）' }}</button>
+          <button v-else-if="!isPublished && extensionReady" class="button" type="button" disabled>重新加载扩展后自动填入</button>
           <button v-else-if="!isPublished && canShareImage" class="button" type="button" :disabled="saving" @click="shareViaDevice">去发布（系统分享）</button>
           <a v-else-if="!isPublished" class="button" :href="publishUrl" target="_blank" rel="noopener noreferrer"
             @click="prepareWebPublish">复制正文并打开发布页</a>
@@ -643,10 +668,10 @@ onUnmounted(() => {
         <p v-if="copyStatus" class="field-hint" role="status">{{ copyStatus }}</p>
         <p v-if="publishStatus" class="field-hint" role="status">{{ publishStatus }}</p>
         <p v-if="currentNote && isDirty" class="field-hint">修改后请先保存，再去发布。</p>
-        <p v-if="!isPublished" class="field-hint">{{ publicationSyncReady
+        <p v-if="!isPublished" class="field-hint">{{ topicExtensionReady
           ? '去发布时会先保存当前文案。扩展填入内容后请亲自点击小红书的发布按钮；检测到发布成功提示后，文案会自动移入“已发布”。'
           : extensionReady
-            ? '当前扩展版本尚未启用发布成功自动同步。请在扩展管理页重新加载扩展，再刷新星析页面。'
+            ? '当前扩展版本尚未支持有效话题自动填入。请在扩展管理页重新加载扩展，再刷新星析页面。'
           : canShareImage
             ? '系统分享会尝试发送原图、标题和正文；请选择小红书，并检查实际带入的内容。'
             : '网页版无法自动填入图片和文案；点击后会复制正文与话题并打开小红书，请手动上传原图、粘贴正文和标题。' }}</p>

@@ -12,6 +12,7 @@
   let reportingSuccess = false
   let attemptRegistration = Promise.resolve(true)
   const { isPublishButtonText, isSuccessText } = globalThis.xiaohongshuPublishSignal
+  const { fillTopics } = globalThis.xiaohongshuTopicFill
 
   function isPublishPage() {
     return location.pathname.startsWith(PUBLISH_PATH)
@@ -229,6 +230,9 @@
         return
       }
       const draft = response.draft
+      if (!Array.isArray(draft.topics)) {
+        throw new Error('当前草稿来自旧版扩展，请返回星析重新点击“去发布”。')
+      }
       if (!isPublishPage()) {
         waitingForPublish = true
         showStatus('请先登录小红书并进入“上传图文”页面；扩展会在当前标签页继续填入。', true)
@@ -243,10 +247,20 @@
       imageUploaded = true
       await fillTitle(titleInput, draft.title)
       await fillEditor(editor, draft.body)
+      if (draft.topics.length) {
+        try {
+          await fillTopics(editor, draft.topics, (name, index, count) => {
+            showStatus(`正在添加话题 ${index + 1}/${count}：#${name}`)
+          })
+        } catch (error) {
+          await fillEditor(editor, draft.body).catch(() => {})
+          throw error
+        }
+      }
       await chrome.runtime.sendMessage({ kind: 'CLEAR_DRAFT' })
       draft.imageData = ''
       finished = true
-      showStatus('图片、标题和正文已填入。请逐项检查，然后由你点击小红书的发布按钮。')
+      showStatus('图片、标题、正文和有效话题已填入。请逐项检查，然后由你点击小红书的发布按钮。')
     } catch (error) {
       waitingForPublish = false
       showStatus(error instanceof Error ? error.message : '自动填入失败，请检查页面后重试。', true)

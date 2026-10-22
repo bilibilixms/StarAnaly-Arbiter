@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "星析 · 小红书发布助手",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "填入小红书图文内容，发布成功后同步状态并返回星析。",
   "permissions": ["storage", "unlimitedStorage", "alarms"],
   "background": {
@@ -15,7 +15,7 @@
     },
     {
       "matches": ["https://creator.xiaohongshu.com/*"],
-      "js": ["publication-signal.js", "publisher.js"],
+      "js": ["publication-signal.js", "topic-fill.js", "publisher.js"],
       "run_at": "document_idle"
     }
   ]

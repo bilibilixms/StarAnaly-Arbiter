@@ -4,6 +4,7 @@ const path = require('node:path')
 const test = require('node:test')
 const vm = require('node:vm')
 const signal = require('../publication-signal.js')
+const topicFill = require('../topic-fill.js')
 
 class FakeElement {
   constructor(textContent = '') {
@@ -43,7 +44,7 @@ test('reports success only after a final publish click and a new success signal'
   vm.runInNewContext(source, {
     chrome, document, Element: FakeElement, HTMLElement: FakeElement,
     MutationObserver: FakeObserver, location: { pathname: '/publish/publish', href: 'https://creator.xiaohongshu.com/publish/publish' },
-    setInterval() {}, globalThis: { xiaohongshuPublishSignal: signal },
+    setInterval() {}, globalThis: { xiaohongshuPublishSignal: signal, xiaohongshuTopicFill: topicFill },
   })
   await new Promise(setImmediate)
 

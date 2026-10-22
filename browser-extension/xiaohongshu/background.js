@@ -33,6 +33,11 @@ function validateDraft(draft) {
   if (!Number.isSafeInteger(draft.noteId) || draft.noteId <= 0) return false
   if (typeof draft.title !== 'string' || !draft.title.trim() || Array.from(draft.title.trim()).length > 20) return false
   if (typeof draft.body !== 'string' || !draft.body.trim() || Array.from(draft.body.trim()).length > 1000) return false
+  if (!Array.isArray(draft.topics) || draft.topics.length > 8) return false
+  if (draft.topics.some((name) => typeof name !== 'string' || !name.trim()
+      || name !== name.trim() || /[\s#]/u.test(name) || Array.from(name).length > 30)) return false
+  if (new Set(draft.topics).size !== draft.topics.length) return false
+  if (Array.from([draft.body.trim(), ...draft.topics.map((name) => `#${name}`)].join(' ')).length > 1000) return false
   if (typeof draft.imageName !== 'string' || !draft.imageName || draft.imageName.length > 255) return false
   if (typeof draft.imageType !== 'string' || !['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(draft.imageType)) return false
   if (typeof draft.imageData !== 'string') return false

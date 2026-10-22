@@ -1,6 +1,7 @@
 (() => {
   const appSource = 'staranaly-xhs-app'
   const extensionSource = 'staranaly-xhs-extension'
+  const extensionVersion = chrome.runtime.getManifest().version
 
   function isWorkspacePage() {
     return ['/share/xiaohongshu', '/share/xiaohongshu/records']
@@ -33,7 +34,7 @@
     if (!message || message.source !== appSource) return
 
     if (message.kind === 'PING') {
-      reply('READY', message.requestId, { publicationSync: true })
+      reply('READY', message.requestId, { publicationSync: true, extensionVersion })
       await replayPublications()
       return
     }
@@ -59,5 +60,5 @@
     }
   })
 
-  if (isWorkspacePage()) reply('READY', undefined, { publicationSync: true })
+  if (isWorkspacePage()) reply('READY', undefined, { publicationSync: true, extensionVersion })
 })()
