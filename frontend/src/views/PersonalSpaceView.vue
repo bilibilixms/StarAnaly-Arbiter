@@ -5,18 +5,18 @@ import personalAvatar from '@/assets/personal-avatar.png'
 <template>
   <div class="personal-space">
     <div class="personal-space__portrait">
-      <img :src="personalAvatar" alt="李冉使用的蓝白色动漫头像" />
+      <img :src="personalAvatar" alt="叱咤月海鱼鱼猫使用的蓝白色动漫头像" />
     </div>
 
     <div class="personal-space__content">
       <p class="personal-space__kicker">星析 · StarAnaly</p>
-      <h1>李冉的个人空间</h1>
+      <h1>叱咤月海鱼鱼猫的个人空间</h1>
       <p class="personal-space__lead">关于这个项目，以及它的使用方式。</p>
 
       <section class="personal-space__statement" aria-labelledby="personal-use-title">
         <h2 id="personal-use-title">项目说明</h2>
         <ul>
-          <li>该项目仅用于李冉个人使用，不进行任何商业用途。</li>
+          <li>该项目仅用于叱咤月海鱼鱼猫个人使用，不进行任何商业用途。</li>
           <li>禁止贩卖该项目。</li>
           <li>允许其他人下载后修改，但仍然禁止售卖。</li>
         </ul>

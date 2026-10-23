@@ -10,10 +10,10 @@ const spaceLabel = computed(() => typeof route.meta.space === 'string' ? route.m
 <template>
   <div class="app-shell">
     <aside class="site-rail" aria-label="个人空间">
-      <RouterLink class="site-rail__avatar" to="/profile" aria-label="进入李冉的个人空间">
+      <RouterLink class="site-rail__avatar" to="/profile" aria-label="进入叱咤月海鱼鱼猫的个人空间">
         <img :src="personalAvatar" alt="" />
       </RouterLink>
-      <span class="site-rail__name">李冉</span>
+      <span class="site-rail__name">叱咤月海鱼鱼猫</span>
       <span class="site-rail__hint">个人空间</span>
     </aside>
 
@@ -23,7 +23,7 @@ const spaceLabel = computed(() => typeof route.meta.space === 'string' ? route.m
       </RouterLink>
       <RouterLink class="sidebar-profile-link" to="/profile">
         <img :src="personalAvatar" alt="" />
-        <span>李冉的个人空间</span>
+        <span>叱咤月海鱼鱼猫的个人空间</span>
       </RouterLink>
       <p class="site-nav__heading">工作空间</p>
       <nav class="site-nav" aria-label="工作空间导航">

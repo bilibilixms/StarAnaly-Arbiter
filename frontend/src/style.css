@@ -119,10 +119,12 @@ a {
 }
 
 .site-rail__name {
+  max-width: 56px;
   color: var(--ink);
   font-size: 11px;
   font-weight: 700;
-  white-space: nowrap;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .site-rail__hint {
@@ -133,6 +135,11 @@ a {
 
 .sidebar-profile-link {
   display: none;
+}
+
+.sidebar-profile-link span {
+  min-width: 0;
+  line-height: 1.4;
 }
 
 .site-sidebar {
