@@ -5,6 +5,12 @@ const router = createRouter({
   routes: [
     { path: '/', redirect: '/tasks' },
     {
+      path: '/profile',
+      name: 'personal-space',
+      meta: { space: '个人空间' },
+      component: () => import('@/views/PersonalSpaceView.vue'),
+    },
+    {
       path: '/tasks',
       name: 'task-list',
       meta: { space: '工作空间' },
