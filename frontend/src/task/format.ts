@@ -14,3 +14,13 @@ export function statusLabel(value: string): string {
   }
   return labels[value] ?? value
 }
+
+export function workflowStageLabel(value: string): string {
+  const labels: Record<string, string> = {
+    PLANNING: '讨论规划',
+    CREATING: '内容制作',
+    READY_TO_PUBLISH: '待发布',
+    PUBLISHED: '已发布',
+  }
+  return labels[value] ?? value
+}

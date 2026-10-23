@@ -2,19 +2,39 @@
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
-  deleteKnowledgeDocument, getCsvPreview, getTask, listCsvFiles, listKnowledgeDocuments,
+  deleteKnowledgeDocument, deleteTaskImage, getCsvPreview, getTask,
+  listCsvFiles, listKnowledgeDocuments, listTaskImages, updateTaskPlan,
+  updateTaskRequirements, uploadTaskImage,
   listRunAnalyses, listRunCitations, listRunSteps, listTaskMessages, listTaskRuns,
   startTaskRun, uploadTableFile, uploadKnowledgeDocument,
   type CsvAnalysis, type CsvFile, type CsvPreview, type KnowledgeCitation,
-  type KnowledgeDocument, type Task, type TaskMessage, type TaskRun, type TaskRunStep,
+  type KnowledgeDocument, type Task, type TaskImage, type TaskMessage,
+  type TaskRun, type TaskRunStep, type TaskWorkflowStage,
 } from '@/api/tasks'
-import { formatCreatedAt, statusLabel } from '@/task/format'
+import { formatCreatedAt, statusLabel, workflowStageLabel } from '@/task/format'
+import { listTaskXiaohongshuNotes, type XiaohongshuNote } from '@/api/sharing'
 
 const route = useRoute()
 const task = ref<Task | null>(null)
 const messages = ref<TaskMessage[]>([])
 const csvFiles = ref<CsvFile[]>([])
 const documents = ref<KnowledgeDocument[]>([])
+const taskImages = ref<TaskImage[]>([])
+const taskNotes = ref<XiaohongshuNote[]>([])
+const editingRequirements = ref(false)
+const requirementTitle = ref('')
+const requirementDescription = ref('')
+const requirementSaving = ref(false)
+const requirementError = ref('')
+const imageBusy = ref(false)
+const imageError = ref('')
+let requirementsInitializedFor: number | null = null
+const stage = ref<TaskWorkflowStage>('PLANNING')
+const discussionSummary = ref('')
+const planSaving = ref(false)
+const planError = ref('')
+const planNotice = ref('')
+let planInitializedFor: number | null = null
 const runs = ref<TaskRun[]>([])
 const activeRunId = ref<number | null>(null)
 const steps = ref<TaskRunStep[]>([])
@@ -42,6 +62,15 @@ let pendingPrompt: { runId: number; content: string } | null = null
 
 const activeRun = computed(() => runs.value.find((run) => run.id === activeRunId.value) ?? null)
 const isRunning = computed(() => task.value?.status === 'RUNNING' || runs.value.some((run) => run.status === 'RUNNING'))
+const hasUnsavedPlan = computed(() => !!task.value && (
+  stage.value !== task.value.workflowStage
+  || discussionSummary.value.trim() !== (task.value.discussionSummary ?? '')
+))
+const workflowStages: TaskWorkflowStage[] = ['PLANNING', 'CREATING', 'READY_TO_PUBLISH', 'PUBLISHED']
+
+watch([stage, discussionSummary], () => {
+  planNotice.value = ''
+})
 
 function taskId(): number | null {
   const id = Number(route.params.id)
@@ -84,14 +113,27 @@ async function loadWorkspace() {
   loading.value = task.value === null
   refreshing.value = true
   try {
-    const [nextTask, nextMessages, nextCsvFiles, nextDocuments, runPage] = await Promise.all([
-      getTask(id), listTaskMessages(id), listCsvFiles(id), listKnowledgeDocuments(id), listTaskRuns(id),
+    const [nextTask, nextMessages, nextCsvFiles, nextDocuments, nextImages, nextNotes, runPage] = await Promise.all([
+      getTask(id), listTaskMessages(id), listCsvFiles(id), listKnowledgeDocuments(id), listTaskImages(id),
+      listTaskXiaohongshuNotes(id), listTaskRuns(id),
     ])
     if (version !== requestVersion) return
     task.value = nextTask
+    if (requirementsInitializedFor !== id) {
+      requirementTitle.value = nextTask.title
+      requirementDescription.value = nextTask.description ?? ''
+      requirementsInitializedFor = id
+    }
+    if (planInitializedFor !== id) {
+      stage.value = nextTask.workflowStage
+      discussionSummary.value = nextTask.discussionSummary ?? ''
+      planInitializedFor = id
+    }
     messages.value = nextMessages
     csvFiles.value = nextCsvFiles
     documents.value = nextDocuments
+    taskImages.value = nextImages
+    taskNotes.value = nextNotes
     runs.value = runPage.content
     if (previewFileId.value !== null && !nextCsvFiles.some((file) => file.id === previewFileId.value)) {
       closePreview()
@@ -141,6 +183,103 @@ async function loadWorkspace() {
       loading.value = false
       refreshing.value = false
     }
+  }
+}
+
+async function saveRequirements() {
+  const id = taskId()
+  if (id === null || requirementSaving.value) return
+  requirementError.value = ''
+  if (!requirementTitle.value.trim()) {
+    requirementError.value = '请输入需求名称。'
+    return
+  }
+  requirementSaving.value = true
+  try {
+    const updated = await updateTaskRequirements(id, requirementTitle.value.trim(), requirementDescription.value.trim())
+    if (taskId() !== id) return
+    task.value = updated
+    editingRequirements.value = false
+    notice.value = '需求文字已保存。工作台会提示重新核对简报。'
+  } catch (cause) {
+    if (taskId() === id) requirementError.value = reason(cause, '保存需求失败。')
+  } finally {
+    requirementSaving.value = false
+  }
+}
+
+async function uploadImages(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  input.value = ''
+  const id = taskId()
+  if (id === null || files.length === 0 || imageBusy.value) return
+  imageError.value = ''
+  if (taskImages.value.length + files.length > 6) {
+    imageError.value = '每份需求最多保存 6 张图片。'
+    return
+  }
+  if (files.some((file) => file.size === 0 || file.size > 20_000_000
+      || !['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type))) {
+    imageError.value = '请选择非空的 JPEG、PNG、GIF 或 WebP 图片，单张最大 20 MB。'
+    return
+  }
+  if (taskImages.value.reduce((sum, item) => sum + item.byteSize, 0)
+      + files.reduce((sum, file) => sum + file.size, 0) > 30_000_000) {
+    imageError.value = '这份需求的图片总大小不能超过 30 MB。'
+    return
+  }
+  imageBusy.value = true
+  const failures: string[] = []
+  try {
+    for (const file of files) {
+      try {
+        const saved = await uploadTaskImage(id, file)
+        if (taskId() === id) taskImages.value.push(saved)
+      } catch (cause) {
+        failures.push(`${file.name}：${reason(cause, '上传失败')}`)
+      }
+    }
+    if (taskId() === id) {
+      if (failures.length) imageError.value = failures.join('；')
+      else notice.value = `已保存 ${files.length} 张图片。工作台会把它们作为参考材料。`
+    }
+  } finally {
+    imageBusy.value = false
+  }
+}
+
+async function removeImage(image: TaskImage) {
+  const id = taskId()
+  if (id === null || imageBusy.value) return
+  imageBusy.value = true
+  imageError.value = ''
+  try {
+    await deleteTaskImage(id, image.id)
+    if (taskId() === id) taskImages.value = taskImages.value.filter((item) => item.id !== image.id)
+  } catch (cause) {
+    if (taskId() === id) imageError.value = reason(cause, '删除图片失败。')
+  } finally {
+    imageBusy.value = false
+  }
+}
+
+async function savePlan() {
+  const id = taskId()
+  if (id === null || planSaving.value) return
+  planError.value = ''
+  planNotice.value = ''
+  planSaving.value = true
+  try {
+    const updated = await updateTaskPlan(id, stage.value, discussionSummary.value.trim())
+    if (taskId() !== id) return
+    task.value = updated
+    discussionSummary.value = updated.discussionSummary ?? ''
+    planNotice.value = '讨论结论与阶段已保存。'
+  } catch (cause) {
+    if (taskId() === id) planError.value = reason(cause, '保存失败，请重试。')
+  } finally {
+    planSaving.value = false
   }
 }
 
@@ -292,6 +431,19 @@ watch(() => route.params.id, () => {
   messages.value = []
   csvFiles.value = []
   documents.value = []
+  taskImages.value = []
+  taskNotes.value = []
+  requirementsInitializedFor = null
+  editingRequirements.value = false
+  requirementTitle.value = ''
+  requirementDescription.value = ''
+  requirementError.value = ''
+  imageError.value = ''
+  planInitializedFor = null
+  stage.value = 'PLANNING'
+  discussionSummary.value = ''
+  planError.value = ''
+  planNotice.value = ''
   runs.value = []
   activeRunId.value = null
   steps.value = []
@@ -320,9 +472,9 @@ onUnmounted(() => {
 <template>
   <section class="page-heading">
     <div>
-      <p class="eyebrow">工作空间 / 任务详情</p>
-      <h1>{{ task?.title ?? '任务详情' }}</h1>
-      <p class="page-description">上传文件、发起分析，查看执行过程和依据。</p>
+      <p class="eyebrow">工作空间 / 需求单</p>
+      <h1>{{ task?.title ?? '需求详情' }}</h1>
+      <p class="page-description">集中保存收到的要求与材料，再到创作工作台确认宣传方向。</p>
     </div>
     <RouterLink class="text-link" to="/tasks">返回任务列表</RouterLink>
   </section>
@@ -339,18 +491,43 @@ onUnmounted(() => {
           <p class="eyebrow">任务 #{{ task.id }}</p>
           <h2>{{ task.title }}</h2>
         </div>
-        <span class="status-badge">{{ statusLabel(task.status) }}</span>
+        <span class="status-badge">{{ workflowStageLabel(task.workflowStage) }}</span>
       </div>
       <p class="workspace-description">{{ task.description || '暂无任务说明。' }}</p>
-      <p class="muted">创建于 <time :datetime="task.createdAt">{{ formatCreatedAt(task.createdAt) }}</time></p>
+      <p class="muted">创建于 <time :datetime="task.createdAt">{{ formatCreatedAt(task.createdAt) }}</time> · AI 执行：{{ statusLabel(task.status) }}</p>
       <p v-if="task.lastError" class="inline-error" role="alert">执行失败：{{ task.lastError }}。可修改下方问题后重新提交。</p>
       <div v-if="loadError" class="inline-error" role="alert">{{ loadError }}</div>
       <div class="section-actions">
+        <button class="button button--secondary button--small" type="button" @click="editingRequirements = !editingRequirements">{{ editingRequirements ? '收起编辑' : '修改需求文字' }}</button>
         <button class="button button--secondary button--small" type="button" :disabled="refreshing" @click="loadWorkspace">
           {{ refreshing ? '正在刷新…' : '刷新工作空间' }}
         </button>
         <span v-if="isRunning" class="muted" role="status">任务执行中，页面会自动更新。</span>
       </div>
+      <form v-if="editingRequirements" class="task-requirements-edit" @submit.prevent="saveRequirements">
+        <div class="field"><label for="requirement-title">需求名称</label><input id="requirement-title" v-model="requirementTitle" maxlength="200" /></div>
+        <div class="field"><label for="requirement-description">原始文字要求</label><textarea id="requirement-description" v-model="requirementDescription" rows="7" maxlength="5000" /></div>
+        <p v-if="requirementError" class="form-error" role="alert">{{ requirementError }}</p>
+        <button class="button" type="submit" :disabled="requirementSaving">{{ requirementSaving ? '正在保存…' : '保存需求文字' }}</button>
+      </form>
+    </section>
+
+    <section class="panel workspace-section task-images" aria-label="需求图片">
+      <div class="section-heading"><h2>需求图片</h2><span class="muted">{{ taskImages.length }} / 6 张</span></div>
+      <p class="task-images__intro">可以上传多张参考图。工作台会一起识别；去小红书时选择一张作为本次发布图片。</p>
+      <label class="upload-control">
+        <input class="upload-control__input" type="file" multiple accept="image/jpeg,image/png,image/gif,image/webp" :disabled="imageBusy" @change="uploadImages" />
+        <span class="upload-control__button">{{ imageBusy ? '正在上传…' : '选择图片（可多选）' }}</span>
+      </label>
+      <p class="field-hint">单张最大 20 MB，每份需求最多 6 张、合计不超过 30 MB。</p>
+      <p v-if="imageError" class="inline-error" role="alert">{{ imageError }}</p>
+      <ul v-if="taskImages.length" class="task-images__list">
+        <li v-for="image in taskImages" :key="image.id">
+          <img :src="`/api/tasks/${task.id}/images/${image.id}`" :alt="image.name" />
+          <strong>{{ image.name }}</strong>
+          <button class="text-button text-button--danger" type="button" :disabled="imageBusy" @click="removeImage(image)">移除</button>
+        </li>
+      </ul>
     </section>
 
     <section class="panel workspace-section" aria-label="上传文件">
@@ -414,9 +591,40 @@ onUnmounted(() => {
       </div>
     </section>
 
+    <section class="panel workspace-section task-plan" aria-label="创作计划">
+      <div class="section-heading"><h2>创作计划</h2><span class="muted">{{ hasUnsavedPlan ? '有未保存修改' : '讨论 → 制作 → 分享' }}</span></div>
+      <ol class="task-plan__stages" aria-label="任务阶段">
+        <li v-for="(option, index) in workflowStages" :key="option"
+          :class="{ 'task-plan__stage--current': stage === option, 'task-plan__stage--done': workflowStages.indexOf(stage) > index }">
+          <span class="task-plan__stage-number">{{ index + 1 }}</span>
+          <span>{{ workflowStageLabel(option) }}</span>
+        </li>
+      </ol>
+      <form class="task-plan__form" @submit.prevent="savePlan">
+        <div class="field">
+          <label for="task-workflow-stage">当前阶段</label>
+          <select id="task-workflow-stage" v-model="stage" :disabled="planSaving">
+            <option v-for="option in workflowStages" :key="option" :value="option">{{ workflowStageLabel(option) }}</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="task-discussion-summary">讨论结论</label>
+          <textarea id="task-discussion-summary" v-model="discussionSummary" rows="5" maxlength="5000" :disabled="planSaving"
+            placeholder="记录确定的方向、目标受众、核心卖点和下一步。"></textarea>
+          <p class="field-hint">可先在下方和星析讨论，再把确定的内容整理到这里。后续对话会参考已保存的结论。</p>
+        </div>
+        <p v-if="planError" class="form-error" role="alert">{{ planError }}</p>
+        <p v-if="planNotice" class="inline-success" role="status">{{ planNotice }}</p>
+        <button class="button" type="submit" :disabled="planSaving">{{ planSaving ? '正在保存…' : '保存计划' }}</button>
+      </form>
+    </section>
+    <div class="task-next-action">
+      <RouterLink class="button" :to="{ name: 'creative-workbench-task', params: { id: task.id } }">带着需求去创作工作台</RouterLink>
+    </div>
+
     <section class="panel conversation workspace-section" aria-label="任务对话">
       <div class="section-heading"><h2>任务对话</h2><span class="muted">{{ messages.length }} 条消息</span></div>
-      <p v-if="messages.length === 0" class="empty-note">输入问题，开始表格分析或资料问答。</p>
+      <p v-if="messages.length === 0" class="empty-note">可以讨论创作方向，也可以上传资料后提问或分析表格。</p>
       <ol v-else class="conversation__messages">
         <li v-for="message in messages" :key="message.id" :class="['conversation__message', message.role === 'USER' ? 'conversation__message--user' : 'conversation__message--assistant']">
           <div class="conversation__message-meta">
@@ -427,16 +635,27 @@ onUnmounted(() => {
         </li>
       </ol>
       <form class="conversation__form" @submit.prevent="submitMessage">
-        <label for="task-message">{{ messages.length === 0 ? '开始任务' : '继续提问' }}</label>
-        <textarea id="task-message" v-model="draft" rows="5" maxlength="5000" :disabled="starting || uploadBusy || documentBusy || isRunning" placeholder="例如：请按月汇总表格销售额；或根据上传资料回答退货期限。"></textarea>
+        <label for="task-message">{{ messages.length === 0 ? '开始讨论' : '继续讨论' }}</label>
+        <textarea id="task-message" v-model="draft" rows="5" maxlength="5000" :disabled="starting || uploadBusy || documentBusy || isRunning" placeholder="例如：帮我梳理这款游戏的受众和核心卖点。"></textarea>
         <p v-if="sendError" class="form-error" role="alert">{{ sendError }}</p>
         <div class="conversation__actions">
           <span>最多 5000 个字符</span>
           <button class="button" type="submit" :disabled="starting || uploadBusy || documentBusy || isRunning">
-            {{ starting ? '正在提交…' : isRunning ? '执行中…' : '开始执行' }}
+            {{ starting ? '正在发送…' : isRunning ? '星析回复中…' : '发送给星析' }}
           </button>
         </div>
       </form>
+    </section>
+
+    <section v-if="taskNotes.length" class="panel workspace-section" aria-label="已关联的小红书作品">
+      <div class="section-heading"><h2>小红书作品</h2><span class="muted">{{ taskNotes.length }} 篇</span></div>
+      <ul class="task-notes__list">
+        <li v-for="note in taskNotes" :key="note.id">
+          <RouterLink class="task-notes__destination" :to="{ name: 'share-xiaohongshu', query: { noteId: note.id } }">
+            <strong>{{ note.title }}</strong><span>{{ note.status === 'PUBLISHED' ? '已发布' : '草稿' }}</span>
+          </RouterLink>
+        </li>
+      </ul>
     </section>
 
     <section class="panel workspace-section" aria-label="执行记录">

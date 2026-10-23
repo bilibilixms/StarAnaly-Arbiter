@@ -24,6 +24,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -40,7 +41,7 @@ class TaskControllerTest {
     @Test
     void createsTaskAndReturnsItsLocation() throws Exception {
         TaskResponse task = new TaskResponse(42L, "分析销售额", "按月汇总", TaskStatus.PENDING,
-                Instant.parse("2026-10-20T02:00:00Z"), null);
+                Instant.parse("2026-10-20T02:00:00Z"), null, TaskWorkflowStage.PLANNING, null);
         when(service.create(any(CreateTaskRequest.class))).thenReturn(task);
 
         mvc.perform(post("/api/tasks")
@@ -70,7 +71,7 @@ class TaskControllerTest {
     @Test
     void returnsTaskById() throws Exception {
         TaskResponse task = new TaskResponse(42L, "分析销售额", null, TaskStatus.PENDING,
-                Instant.parse("2026-10-20T02:00:00Z"), null);
+                Instant.parse("2026-10-20T02:00:00Z"), null, TaskWorkflowStage.PLANNING, null);
         when(service.findById(42L)).thenReturn(task);
 
         mvc.perform(get("/api/tasks/42"))
@@ -87,9 +88,35 @@ class TaskControllerTest {
     }
 
     @Test
+    void updatesCreativePlanWithoutChangingRunStatus() throws Exception {
+        TaskResponse task = new TaskResponse(42L, "宣传新游戏", null, TaskStatus.SUCCEEDED,
+                Instant.parse("2026-10-20T02:00:00Z"), null, TaskWorkflowStage.CREATING, "目标受众是休闲玩家");
+        when(service.updatePlan(eq(42L), any(UpdateTaskPlanRequest.class))).thenReturn(task);
+
+        mvc.perform(put("/api/tasks/42/plan")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"workflowStage":"CREATING","discussionSummary":"目标受众是休闲玩家"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.workflowStage").value("CREATING"))
+                .andExpect(jsonPath("$.discussionSummary").value("目标受众是休闲玩家"))
+                .andExpect(jsonPath("$.status").value("SUCCEEDED"));
+    }
+
+    @Test
+    void rejectsPlanWithoutStage() throws Exception {
+        mvc.perform(put("/api/tasks/42/plan")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"discussionSummary\":\"方向\"}"))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(service);
+    }
+
+    @Test
     void listsTasksWithPagination() throws Exception {
         TaskResponse task = new TaskResponse(42L, "分析销售额", null, TaskStatus.PENDING,
-                Instant.parse("2026-10-20T02:00:00Z"), null);
+                Instant.parse("2026-10-20T02:00:00Z"), null, TaskWorkflowStage.PLANNING, null);
         when(service.findAll(any(), isNull(), isNull()))
                 .thenReturn(new PageImpl<>(List.of(task), PageRequest.of(0, 20), 1));
 
@@ -119,7 +146,7 @@ class TaskControllerTest {
     @Test
     void acceptsStatusAndTitleSearchTogether() throws Exception {
         TaskResponse task = new TaskResponse(42L, "分析销售额", null, TaskStatus.FAILED,
-                Instant.parse("2026-10-20T02:00:00Z"), null);
+                Instant.parse("2026-10-20T02:00:00Z"), null, TaskWorkflowStage.PLANNING, null);
         when(service.findAll(any(), eq(TaskStatus.FAILED), eq("分折销售额")))
                 .thenReturn(new PageImpl<>(List.of(task), PageRequest.of(0, 20), 1));
 

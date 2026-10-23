@@ -16,6 +16,8 @@ export interface XiaohongshuNote {
   createdAt: string
   updatedAt: string
   publishedAt: string | null
+  taskId: number | null
+  directionIndex: number | null
 }
 
 export interface XiaohongshuMaterial {
@@ -51,6 +53,14 @@ export function listXiaohongshuNotes(status: XiaohongshuNote['status']): Promise
   return request(`${notesUrl}?status=${status}`)
 }
 
+export function listTaskXiaohongshuNotes(taskId: number): Promise<XiaohongshuNote[]> {
+  return request(`/api/share/xiaohongshu/tasks/${taskId}/notes`)
+}
+
+export function getXiaohongshuNote(id: number): Promise<XiaohongshuNote> {
+  return request(`${notesUrl}/${id}`)
+}
+
 export async function loadXiaohongshuImage(note: XiaohongshuNote): Promise<File> {
   let response: Response
   try {
@@ -70,6 +80,8 @@ export function saveXiaohongshuNote(fields: {
   title: string
   body: string
   tagsText: string
+  taskId?: number | null
+  directionIndex?: number | null
 }, id?: number): Promise<XiaohongshuNote> {
   const form = new FormData()
   if (fields.image) form.append('image', fields.image)
@@ -77,6 +89,8 @@ export function saveXiaohongshuNote(fields: {
   form.append('title', fields.title)
   form.append('body', fields.body)
   form.append('tagsText', fields.tagsText)
+  if (fields.taskId) form.append('taskId', String(fields.taskId))
+  if (fields.directionIndex !== null && fields.directionIndex !== undefined) form.append('directionIndex', String(fields.directionIndex))
   return request(id ? `${notesUrl}/${id}` : notesUrl, { method: id ? 'PUT' : 'POST', body: form })
 }
 
@@ -116,11 +130,14 @@ export async function deleteXiaohongshuMaterial(id: number): Promise<void> {
   if (!response.ok) await readResponse(response)
 }
 
-export async function generateXiaohongshuDraft(image: File, requirements: string, materialIds: number[] = []): Promise<XiaohongshuDraft> {
+export async function generateXiaohongshuDraft(image: File, requirements: string, materialIds: number[] = [],
+  taskId?: number | null, direction?: number | null): Promise<XiaohongshuDraft> {
   const form = new FormData()
   form.append('image', image)
   form.append('requirements', requirements)
   for (const id of materialIds) form.append('materialIds', String(id))
+  if (taskId) form.append('taskId', String(taskId))
+  if (direction !== null && direction !== undefined) form.append('direction', String(direction))
 
   let response: Response
   try {

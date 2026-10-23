@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { listTasks, type TaskPage, type TaskStatus, type TaskTimeOrder } from '@/api/tasks'
-import { formatCreatedAt, statusLabel } from '@/task/format'
+import { formatCreatedAt, statusLabel, workflowStageLabel } from '@/task/format'
 
 const statuses: Array<{ value: TaskStatus | ''; label: string }> = [
-  { value: '', label: '全部' },
-  { value: 'PENDING', label: '等待处理' },
+  { value: '', label: '全部 AI 状态' },
+  { value: 'PENDING', label: '未执行' },
   { value: 'RUNNING', label: '执行中' },
-  { value: 'SUCCEEDED', label: '已完成' },
+  { value: 'SUCCEEDED', label: '回复完成' },
   { value: 'FAILED', label: '执行失败' },
 ]
 const page = ref(0)
@@ -96,16 +96,16 @@ onUnmounted(() => {
 <template>
   <section class="page-heading">
     <div>
-      <p class="eyebrow">工作空间 / 任务</p>
-      <h1>任务列表</h1>
-      <p class="page-description">按状态和创建时间浏览任务，或输入任务名查找；同名任务会分别列出。</p>
+      <p class="eyebrow">工作空间 / 需求单</p>
+      <h1>需求列表</h1>
+      <p class="page-description">从原始材料开始，跟进每份宣传需求的讨论、创作和发布。</p>
     </div>
-    <RouterLink class="button" to="/tasks/new">新建任务</RouterLink>
+    <RouterLink class="button" to="/tasks/new">新建需求</RouterLink>
   </section>
 
-  <section class="panel" aria-label="任务列表">
+  <section class="panel" aria-label="需求列表">
     <div class="task-filters">
-      <div class="task-filters__statuses" role="group" aria-label="按状态筛选任务">
+      <div class="task-filters__statuses" role="group" aria-label="按 AI 执行状态筛选任务">
         <button v-for="option in statuses" :key="option.value" type="button" class="task-filters__status"
           :class="{ 'task-filters__status--active': status === option.value }"
           :aria-pressed="status === option.value" @click="selectStatus(option.value)">
@@ -114,9 +114,9 @@ onUnmounted(() => {
       </div>
       <div class="task-filters__controls">
         <form class="task-filters__search" role="search" @submit.prevent="applySearch">
-          <label for="task-title-search">查找任务</label>
+          <label for="task-title-search">查找需求</label>
           <input id="task-title-search" v-model="searchInput" type="search" maxlength="200"
-            placeholder="输入任务名，支持同拼音汉字和少量错字" />
+            placeholder="输入需求名称" />
           <button class="button button--secondary button--small" type="submit">搜索</button>
         </form>
         <div class="task-filters__sort">
@@ -140,9 +140,9 @@ onUnmounted(() => {
         <button class="button button--secondary" type="button" @click="clearFilters">清除筛选</button>
       </template>
       <template v-else>
-        <h2>还没有任务</h2>
-        <p>创建一个任务，开始记录你的工作。</p>
-        <RouterLink class="button" to="/tasks/new">创建任务</RouterLink>
+        <h2>还没有需求</h2>
+        <p>创建一份需求，集中保存文字、图片和文档。</p>
+        <RouterLink class="button" to="/tasks/new">新建需求</RouterLink>
       </template>
     </div>
     <template v-else-if="result">
@@ -150,8 +150,9 @@ onUnmounted(() => {
         <table class="task-table">
           <thead>
             <tr>
-              <th scope="col">任务</th>
-              <th scope="col">状态</th>
+              <th scope="col">需求</th>
+              <th scope="col">当前阶段</th>
+              <th scope="col">AI 执行</th>
               <th scope="col">创建时间</th>
             </tr>
           </thead>
@@ -163,7 +164,8 @@ onUnmounted(() => {
                 </RouterLink>
                 <span class="task-id">#{{ task.id }}</span>
               </td>
-              <td><span class="status-badge">{{ statusLabel(task.status) }}</span></td>
+              <td><span class="status-badge">{{ workflowStageLabel(task.workflowStage) }}</span></td>
+              <td>{{ statusLabel(task.status) }}</td>
               <td>
                 <time :datetime="task.createdAt">{{ formatCreatedAt(task.createdAt) }}</time>
               </td>

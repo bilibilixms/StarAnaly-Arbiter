@@ -5,10 +5,38 @@ export interface Task {
   status: string
   createdAt: string
   lastError: string | null
+  workflowStage: TaskWorkflowStage
+  discussionSummary: string | null
 }
 
 export type TaskStatus = 'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED'
+export type TaskWorkflowStage = 'PLANNING' | 'CREATING' | 'READY_TO_PUBLISH' | 'PUBLISHED'
 export type TaskTimeOrder = 'newest' | 'oldest'
+
+export interface TaskImage {
+  id: number
+  taskId: number
+  name: string
+  mime: string
+  byteSize: number
+  createdAt: string
+}
+
+export interface CreativeBrief {
+  objective: string
+  audience: string
+  coreMessage: string
+  tone: string
+  facts: Array<{ text: string; source: string }>
+  unknowns: string[]
+  directions: Array<{ name: string; angle: string; headlineIdea: string }>
+}
+
+export interface CreativeBriefResponse extends CreativeBrief {
+  confirmed: boolean
+  sourcesChanged: boolean
+  updatedAt: string
+}
 
 export interface TaskMessage {
   id: number
@@ -164,6 +192,63 @@ export function listTasks(page = 0, status?: TaskStatus, query = '', order: Task
 
 export function getTask(id: number): Promise<Task> {
   return request<Task>(`/tasks/${id}`)
+}
+
+export function updateTaskPlan(id: number, workflowStage: TaskWorkflowStage, discussionSummary: string): Promise<Task> {
+  return request<Task>(`/tasks/${id}/plan`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workflowStage, discussionSummary }),
+  })
+}
+
+export function updateTaskRequirements(id: number, title: string, description: string): Promise<Task> {
+  return request<Task>(`/tasks/${id}/requirements`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, description }),
+  })
+}
+
+export function listTaskImages(id: number): Promise<TaskImage[]> {
+  return request<TaskImage[]>(`/tasks/${id}/images`)
+}
+
+export function uploadTaskImage(id: number, file: File): Promise<TaskImage> {
+  const form = new FormData()
+  form.append('file', file)
+  return request<TaskImage>(`/tasks/${id}/images`, { method: 'POST', body: form })
+}
+
+export function deleteTaskImage(id: number, imageId: number): Promise<void> {
+  return request<void>(`/tasks/${id}/images/${imageId}`, { method: 'DELETE' })
+}
+
+export async function loadTaskImage(id: number, image: TaskImage): Promise<File> {
+  let response: Response
+  try {
+    response = await fetch(`/api/tasks/${id}/images/${image.id}`)
+  } catch {
+    throw new Error('无法连接后端服务，请确认服务已启动。')
+  }
+  if (!response.ok) throw new Error('读取需求图片失败。')
+  return new File([await response.blob()], image.name, { type: image.mime })
+}
+
+export async function getCreativeBrief(id: number): Promise<CreativeBriefResponse | null> {
+  return (await request<CreativeBriefResponse | null>(`/tasks/${id}/brief`)) ?? null
+}
+
+export function generateCreativeBrief(id: number): Promise<CreativeBriefResponse> {
+  return request<CreativeBriefResponse>(`/tasks/${id}/brief/generate`, { method: 'POST' })
+}
+
+export function saveCreativeBrief(id: number, brief: CreativeBrief, confirmed: boolean): Promise<CreativeBriefResponse> {
+  return request<CreativeBriefResponse>(`/tasks/${id}/brief`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...brief, confirmed }),
+  })
 }
 
 export function createTask(input: CreateTaskInput): Promise<Task> {

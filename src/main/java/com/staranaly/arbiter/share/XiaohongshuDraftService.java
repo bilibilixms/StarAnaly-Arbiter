@@ -6,6 +6,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+import com.staranaly.arbiter.task.CreativeBriefResponse;
+import com.staranaly.arbiter.task.CreativeBriefService;
+import com.staranaly.arbiter.task.TaskImageResponse;
+import com.staranaly.arbiter.task.TaskImageService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -34,10 +38,15 @@ public class XiaohongshuDraftService {
 
     private final ModelGateway modelGateway;
     private final ObjectMapper objectMapper;
+    private final CreativeBriefService briefs;
+    private final TaskImageService taskImages;
 
-    public XiaohongshuDraftService(ModelGateway modelGateway, ObjectMapper objectMapper) {
+    public XiaohongshuDraftService(ModelGateway modelGateway, ObjectMapper objectMapper,
+            CreativeBriefService briefs, TaskImageService taskImages) {
         this.modelGateway = modelGateway;
         this.objectMapper = objectMapper;
+        this.briefs = briefs;
+        this.taskImages = taskImages;
     }
 
     public XiaohongshuDraftResponse generate(MultipartFile image, String requirements) {
@@ -46,6 +55,11 @@ public class XiaohongshuDraftService {
 
     public XiaohongshuDraftResponse generate(MultipartFile image, String requirements,
             List<XiaohongshuMaterial> materials) {
+        return generate(image, requirements, materials, null, null);
+    }
+
+    public XiaohongshuDraftResponse generate(MultipartFile image, String requirements,
+            List<XiaohongshuMaterial> materials, Long taskId, Integer directionIndex) {
         String prompt = requirements == null ? "" : requirements.strip();
         if (prompt.length() > 2000) {
             throw new XiaohongshuInputException("文字要求不能超过 2000 字。");
@@ -66,6 +80,26 @@ public class XiaohongshuDraftService {
         }
 
         StringBuilder instruction = new StringBuilder();
+        if (taskId != null) {
+            CreativeBriefResponse brief = briefs.get(taskId)
+                    .orElseThrow(() -> new XiaohongshuInputException("请先在创作工作台生成并确认简报。"));
+            if (!brief.confirmed() || brief.sourcesChanged()) {
+                throw new XiaohongshuInputException("需求材料或简报尚未确认，请返回创作工作台核对。");
+            }
+            if (directionIndex == null || directionIndex < 0 || directionIndex >= brief.directions().size()) {
+                throw new XiaohongshuInputException("请选择简报中的宣传方向。");
+            }
+            var direction = brief.directions().get(directionIndex);
+            instruction.append("以下是用户已确认的创作简报。事实必须有依据；待确认事项不能写成已发生的事实。\n")
+                    .append("目标：").append(brief.objective()).append("\n受众：").append(brief.audience())
+                    .append("\n核心信息：").append(brief.coreMessage()).append("\n语气：").append(brief.tone())
+                    .append("\n本次方向：").append(direction.name()).append("；").append(direction.angle())
+                    .append("\n标题想法（可调整）：").append(direction.headlineIdea()).append("\n已确认事实：\n");
+            brief.facts().forEach(fact -> instruction.append("- ").append(fact.text())
+                    .append("（来源：").append(fact.source()).append("）\n"));
+            instruction.append("待确认、不得当作事实：\n");
+            brief.unknowns().forEach(item -> instruction.append("- ").append(item).append("\n"));
+        }
         if (materials != null && !materials.isEmpty()) {
             instruction.append("以下是本次优先参考的创作素材。请优先使用其中与图片和主题相关的具体信息及语气；素材未提及的个人经历不要补造。\n");
             for (int i = 0; i < materials.size(); i++) {
@@ -77,10 +111,19 @@ public class XiaohongshuDraftService {
         }
         instruction.append(prompt.isEmpty() ? "请根据这张图片创作一篇自然、真实的小红书图文笔记。"
                 : "本次发布要求：\n" + prompt);
-        ModelReply reply = modelGateway.next(List.of(
-                ModelConversationMessage.text("system", SYSTEM_PROMPT),
-                ModelConversationMessage.imagePrompt(instruction.toString(), bytes, mimeType)),
-                false, MODEL_TIMEOUT);
+        List<ModelConversationMessage> messages = new ArrayList<>();
+        messages.add(ModelConversationMessage.text("system", SYSTEM_PROMPT));
+        messages.add(ModelConversationMessage.imagePrompt(instruction.toString(), bytes, mimeType));
+        if (taskId != null) {
+            for (TaskImageResponse reference : taskImages.list(taskId)) {
+                TaskImageService.ImageContent content = taskImages.content(taskId, reference.id());
+                if (!Arrays.equals(bytes, content.bytes())) {
+                    messages.add(ModelConversationMessage.imagePrompt(
+                            "其他需求参考图片：" + reference.name(), content.bytes(), content.mime()));
+                }
+            }
+        }
+        ModelReply reply = modelGateway.next(messages, false, MODEL_TIMEOUT);
         if (reply.content() == null || !reply.toolCalls().isEmpty()) {
             throw new ModelServiceException(HttpStatus.BAD_GATEWAY, "模型未返回可用的发布文案。");
         }

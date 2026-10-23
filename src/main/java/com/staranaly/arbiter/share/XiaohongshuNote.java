@@ -57,12 +57,30 @@ public class XiaohongshuNote {
     @Column(name = "published_at")
     private LocalDateTime publishedAt;
 
+    @Column(name = "task_id")
+    private Long taskId;
+
+    @Column(name = "direction_index")
+    private Integer directionIndex;
+
     protected XiaohongshuNote() {}
 
     public XiaohongshuNote(String requirements, String title, String body, String tagsText,
             String imageName, String imageMime, int imageSize) {
+        this(requirements, title, body, tagsText, imageName, imageMime, imageSize, null);
+    }
+
+    public XiaohongshuNote(String requirements, String title, String body, String tagsText,
+            String imageName, String imageMime, int imageSize, Long taskId) {
+        this(requirements, title, body, tagsText, imageName, imageMime, imageSize, taskId, null);
+    }
+
+    public XiaohongshuNote(String requirements, String title, String body, String tagsText,
+            String imageName, String imageMime, int imageSize, Long taskId, Integer directionIndex) {
         updateText(requirements, title, body, tagsText);
         updateImage(imageName, imageMime, imageSize);
+        this.taskId = taskId;
+        this.directionIndex = directionIndex;
     }
 
     @PrePersist
@@ -95,6 +113,10 @@ public class XiaohongshuNote {
     }
 
     public Long getId() { return id; }
+    public Long getTaskId() { return taskId; }
+    public void setTaskId(Long taskId) { this.taskId = taskId; }
+    public Integer getDirectionIndex() { return directionIndex; }
+    public void setDirectionIndex(Integer directionIndex) { this.directionIndex = directionIndex; }
     public Status getStatus() { return status; }
     public String getRequirements() { return requirements; }
     public String getTitle() { return title; }

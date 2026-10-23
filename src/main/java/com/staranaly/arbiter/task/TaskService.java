@@ -38,6 +38,20 @@ public class TaskService {
                 .orElseThrow(() -> new TaskNotFoundException(id));
     }
 
+    @Transactional
+    public TaskResponse updatePlan(Long id, UpdateTaskPlanRequest request) {
+        Task task = repository.findById(id).orElseThrow(() -> new TaskNotFoundException(id));
+        task.updatePlan(request.workflowStage(), request.discussionSummary());
+        return TaskResponse.from(task);
+    }
+
+    @Transactional
+    public TaskResponse updateRequirements(Long id, UpdateTaskRequirementsRequest request) {
+        Task task = repository.findById(id).orElseThrow(() -> new TaskNotFoundException(id));
+        task.updateRequirements(request.title(), request.description());
+        return TaskResponse.from(task);
+    }
+
     @Transactional(readOnly = true)
     public Page<TaskResponse> findAll(Pageable pageable, TaskStatus status, String query) {
         String term = query == null ? "" : TaskTitleMatcher.normalize(query);

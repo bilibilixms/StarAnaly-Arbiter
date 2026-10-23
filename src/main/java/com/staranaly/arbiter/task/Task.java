@@ -6,6 +6,8 @@ import java.time.ZoneOffset;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -36,6 +38,13 @@ public class Task {
     @Column(name = "last_error", length = 500)
     private String lastError;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "workflow_stage", nullable = false, length = 24)
+    private TaskWorkflowStage workflowStage;
+
+    @Column(name = "discussion_summary", length = 5000)
+    private String discussionSummary;
+
     protected Task() {
         // JPA requires a no-argument constructor.
     }
@@ -44,6 +53,7 @@ public class Task {
         this.title = title;
         this.description = description;
         this.status = TaskStatus.PENDING;
+        this.workflowStage = TaskWorkflowStage.PLANNING;
     }
 
     @PrePersist
@@ -73,6 +83,24 @@ public class Task {
 
     public String getLastError() {
         return lastError;
+    }
+
+    public TaskWorkflowStage getWorkflowStage() {
+        return workflowStage;
+    }
+
+    public String getDiscussionSummary() {
+        return discussionSummary;
+    }
+
+    public void updatePlan(TaskWorkflowStage stage, String summary) {
+        this.workflowStage = stage;
+        this.discussionSummary = summary == null || summary.isBlank() ? null : summary.trim();
+    }
+
+    public void updateRequirements(String nextTitle, String nextDescription) {
+        this.title = nextTitle.trim();
+        this.description = nextDescription == null || nextDescription.isBlank() ? null : nextDescription.trim();
     }
 
     public void markRunning() {

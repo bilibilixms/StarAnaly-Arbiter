@@ -1,14 +1,20 @@
 package com.staranaly.arbiter.share;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.staranaly.arbiter.model.ModelConversationMessage;
 import com.staranaly.arbiter.model.ModelGateway;
 import com.staranaly.arbiter.model.ModelReply;
+import com.staranaly.arbiter.task.CreativeBriefService;
+import com.staranaly.arbiter.task.CreativeBrief;
+import com.staranaly.arbiter.task.CreativeBriefResponse;
+import com.staranaly.arbiter.task.TaskImageService;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.multipart.MultipartFile;
@@ -26,7 +32,49 @@ import static org.mockito.Mockito.when;
 class XiaohongshuDraftServiceTest {
 
     private final ModelGateway gateway = mock(ModelGateway.class);
-    private final XiaohongshuDraftService service = new XiaohongshuDraftService(gateway, new ObjectMapper());
+    private final CreativeBriefService briefs = mock(CreativeBriefService.class);
+    private final TaskImageService taskImages = mock(TaskImageService.class);
+    private final XiaohongshuDraftService service = new XiaohongshuDraftService(gateway, new ObjectMapper(),
+            briefs, taskImages);
+
+    private CreativeBriefResponse linkedBrief(boolean confirmed) {
+        return new CreativeBriefResponse("介绍活动", "周末游客", "有免费试玩", "平实",
+                List.of(new CreativeBrief.Fact("周六开放试玩", "文档：活动说明.pdf")),
+                List.of("是否需要预约"), List.of(new CreativeBrief.Direction("现场体验", "介绍试玩流程", "周六去看看")),
+                confirmed, false, Instant.now());
+    }
+
+    @Test
+    void linkedGenerationIncludesConfirmedFactsAndKeepsUnknownsOutOfClaims() {
+        MultipartFile image = new MockMultipartFile("image", "photo.jpg", "image/jpeg",
+                new byte[] {(byte) 0xff, (byte) 0xd8, (byte) 0xff, 0x00});
+        when(briefs.get(42L)).thenReturn(Optional.of(linkedBrief(true)));
+        when(taskImages.list(42L)).thenReturn(List.of());
+        when(gateway.next(anyList(), eq(false), any(Duration.class)))
+                .thenReturn(new ModelReply("{\"title\":\"周末试玩\",\"body\":\"周六开放试玩。\",\"hashtags\":[]}", List.of()));
+
+        assertThat(service.generate(image, "写得简短", List.of(), 42L, 0).title()).isEqualTo("周末试玩");
+        verify(gateway).next(org.mockito.ArgumentMatchers.argThat(messages -> {
+            Object content = messages.get(1).toRequest().get("content");
+            if (!(content instanceof List<?> parts) || !(parts.get(0) instanceof Map<?, ?> text)) return false;
+            String prompt = text.get("text").toString();
+            return prompt.contains("现场体验") && prompt.contains("周六开放试玩")
+                    && prompt.contains("文档：活动说明.pdf") && prompt.contains("是否需要预约")
+                    && prompt.contains("不得当作事实") && prompt.contains("写得简短");
+        }), eq(false), any(Duration.class));
+    }
+
+    @Test
+    void linkedGenerationRequiresConfirmedBrief() {
+        MultipartFile image = new MockMultipartFile("image", "photo.jpg", "image/jpeg",
+                new byte[] {(byte) 0xff, (byte) 0xd8, (byte) 0xff, 0x00});
+        when(briefs.get(42L)).thenReturn(Optional.of(linkedBrief(false)));
+
+        assertThatThrownBy(() -> service.generate(image, "", List.of(), 42L, 0))
+                .isInstanceOf(XiaohongshuInputException.class)
+                .hasMessageContaining("尚未确认");
+        verifyNoInteractions(gateway);
+    }
 
     @Test
     void sendsImageAndRequirementsToModelAndReturnsDraft() {

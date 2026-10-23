@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { deleteXiaohongshuMaterial, deleteXiaohongshuNote, generateXiaohongshuDraft,
+  getXiaohongshuNote,
   listXiaohongshuMaterials, listXiaohongshuNotes, saveXiaohongshuMaterial,
   loadXiaohongshuImage, markXiaohongshuNotePublished, saveXiaohongshuNote,
   type XiaohongshuDraft, type XiaohongshuMaterial, type XiaohongshuNote } from '@/api/sharing'
+import { getCreativeBrief, getTask, listTaskImages, loadTaskImage,
+  type CreativeBriefResponse, type TaskImage } from '@/api/tasks'
 
 const maxImageBytes = 20_000_000
 const supportedTypes = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
@@ -36,6 +39,13 @@ const savedNotes = ref<XiaohongshuNote[]>([])
 const publishedNotes = ref<XiaohongshuNote[]>([])
 const materials = ref<XiaohongshuMaterial[]>([])
 const selectedMaterialIds = ref<number[]>([])
+const linkedTaskId = ref<number | null>(null)
+const linkedTaskTitle = ref('')
+const linkedBrief = ref<CreativeBriefResponse | null>(null)
+const linkedDirection = ref<number | null>(null)
+const linkedImages = ref<TaskImage[]>([])
+const loadingTaskContext = ref(false)
+let routeContextVersion = 0
 const materialEditorOpen = ref(false)
 const materialEditingId = ref<number | null>(null)
 const materialName = ref('')
@@ -96,11 +106,117 @@ function selectImage(event: Event) {
     error.value = '图片必须非空，且不能超过 20 MB。'
     return
   }
+  useImage(file)
+}
+
+function useImage(file: File) {
   if (imageUrl.value) URL.revokeObjectURL(imageUrl.value)
   image.value = file
   imageUrl.value = URL.createObjectURL(file)
   imageChanged.value = true
   saveStatus.value = ''
+}
+
+async function chooseLinkedImage(item: TaskImage) {
+  const id = linkedTaskId.value
+  if (id === null || generating.value || saving.value) return
+  loadingTaskContext.value = true
+  error.value = ''
+  try {
+    const file = await loadTaskImage(id, item)
+    if (linkedTaskId.value === id) useImage(file)
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '读取需求图片失败。'
+  } finally {
+    loadingTaskContext.value = false
+  }
+}
+
+async function loadRouteContext() {
+  const version = ++routeContextVersion
+  const noteId = Number(route.query.noteId)
+  if (Number.isSafeInteger(noteId) && noteId > 0) {
+    loadingTaskContext.value = true
+    try {
+      const note = await getXiaohongshuNote(noteId)
+      if (version !== routeContextVersion) return
+      const opened = currentNote.value?.id === note.id || await openNote(note)
+      if (!opened) return
+      linkedTaskId.value = note.taskId
+      if (note.taskId) {
+        const [task, images, brief] = await Promise.all([getTask(note.taskId), listTaskImages(note.taskId), getCreativeBrief(note.taskId)])
+        if (version === routeContextVersion) {
+          linkedTaskTitle.value = task.title
+          linkedImages.value = images
+          linkedBrief.value = brief
+          linkedDirection.value = note.directionIndex
+        }
+      }
+    } catch (cause) {
+      if (version === routeContextVersion) error.value = cause instanceof Error ? cause.message : '打开关联文案失败。'
+    } finally {
+      if (version === routeContextVersion) loadingTaskContext.value = false
+    }
+    return
+  }
+  const id = Number(route.query.taskId)
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    if (currentNote.value) return
+    linkedTaskId.value = null
+    linkedTaskTitle.value = ''
+    linkedBrief.value = null
+    linkedDirection.value = null
+    linkedImages.value = []
+    return
+  }
+  const direction = Number(route.query.direction)
+  loadingTaskContext.value = true
+  error.value = ''
+  try {
+    const [task, brief, images] = await Promise.all([getTask(id), getCreativeBrief(id), listTaskImages(id)])
+    if (version !== routeContextVersion) return
+    if (!brief?.confirmed || brief.sourcesChanged) {
+      error.value = '这份需求的创作简报尚未确认，请返回工作台核对。'
+      return
+    }
+    if (!Number.isInteger(direction) || direction < 0 || direction >= brief.directions.length) {
+      error.value = '宣传方向无效，请从工作台重新选择。'
+      return
+    }
+    if (currentNote.value || draft.value) {
+      if ((isDirty.value || (draft.value && !currentNote.value))
+          && !window.confirm('当前文案有未保存修改，确定切换到另一份需求吗？')) return
+      resetEditor()
+    }
+    linkedTaskId.value = id
+    linkedTaskTitle.value = task.title
+    linkedBrief.value = brief
+    linkedDirection.value = direction
+    linkedImages.value = images
+    const chosen = brief.directions[direction]
+    requirements.value = `宣传方向：${chosen.name}。切入点：${chosen.angle}。语气：${brief.tone}。`.slice(0, 2000)
+    const posterToken = typeof route.query.poster === 'string' ? route.query.poster : ''
+    if (posterToken) {
+      const stored = sessionStorage.getItem(`staranaly-poster:${posterToken}`)
+      if (!stored) throw new Error('临时文字海报已失效，请返回工作台重新制作。')
+      const poster = JSON.parse(stored) as { name?: unknown; dataUrl?: unknown }
+      if (typeof poster.name !== 'string' || typeof poster.dataUrl !== 'string'
+          || !poster.dataUrl.startsWith('data:image/jpeg;base64,')) {
+        throw new Error('临时文字海报无法读取，请返回工作台重新制作。')
+      }
+      const blob = await (await fetch(poster.dataUrl)).blob()
+      if (version !== routeContextVersion) return
+      useImage(new File([blob], poster.name, { type: 'image/jpeg' }))
+      return
+    }
+    const requestedImageId = Number(route.query.imageId)
+    const initialImage = images.find((item) => item.id === requestedImageId) ?? images[0]
+    if (initialImage) await chooseLinkedImage(initialImage)
+  } catch (cause) {
+    if (version === routeContextVersion) error.value = cause instanceof Error ? cause.message : '读取需求失败。'
+  } finally {
+    if (version === routeContextVersion) loadingTaskContext.value = false
+  }
 }
 
 function clearImage() {
@@ -127,6 +243,14 @@ function startNew() {
   if ((isDirty.value || (draft.value && !currentNote.value))
       && !window.confirm('当前修改尚未保存，确定开始新创作吗？')) return
   resetEditor()
+  if (!route.query.taskId) {
+    linkedTaskId.value = null
+    linkedTaskTitle.value = ''
+    linkedBrief.value = null
+    linkedDirection.value = null
+    linkedImages.value = []
+    if (route.query.noteId) void router.replace({ name: 'share-xiaohongshu' })
+  }
 }
 
 function edited() {
@@ -248,10 +372,10 @@ async function refreshNotes() {
   }
 }
 
-async function openNote(note: XiaohongshuNote) {
-  if (loadingNote.value || saving.value || generating.value || preparingPublish.value) return
+async function openNote(note: XiaohongshuNote): Promise<boolean> {
+  if (loadingNote.value || saving.value || generating.value || preparingPublish.value) return false
   if ((isDirty.value || (draft.value && !currentNote.value))
-      && !window.confirm('当前修改尚未保存，确定打开其他文案吗？')) return
+      && !window.confirm('当前修改尚未保存，确定打开其他文案吗？')) return false
   loadingNote.value = true
   libraryError.value = ''
   try {
@@ -263,11 +387,15 @@ async function openNote(note: XiaohongshuNote) {
     draft.value = { title: note.title, body: note.body, hashtags: [] }
     tagsText.value = note.tagsText
     currentNote.value = note
+    linkedTaskId.value = note.taskId
+    linkedDirection.value = note.directionIndex
     imageChanged.value = false
-    if (isRecordsPage.value) await router.push({ name: 'share-xiaohongshu' })
+    if (isRecordsPage.value) await router.push({ name: 'share-xiaohongshu', query: { noteId: note.id } })
     window.scrollTo({ top: 0, behavior: 'smooth' })
+    return true
   } catch (cause) {
     libraryError.value = cause instanceof Error ? cause.message : '打开文案失败。'
+    return false
   } finally {
     loadingNote.value = false
   }
@@ -297,16 +425,46 @@ async function saveNote(): Promise<XiaohongshuNote | null> {
     const saved = await saveXiaohongshuNote({
       image: currentNote.value && !imageChanged.value ? null : image.value,
       requirements: requirements.value.trim(), title, body, tagsText: tags,
+      taskId: linkedTaskId.value, directionIndex: linkedDirection.value,
     }, currentNote.value?.id)
     currentNote.value = saved
     imageChanged.value = false
     activeTab.value = 'DRAFT'
     saveStatus.value = '文案已保存，可以稍后从草稿列表继续编辑或发布。'
+    if (route.name === 'share-xiaohongshu' && Number(route.query.noteId) !== saved.id) {
+      const posterToken = typeof route.query.poster === 'string' ? route.query.poster : ''
+      await router.replace({ name: 'share-xiaohongshu', query: { noteId: saved.id } })
+      if (posterToken) sessionStorage.removeItem(`staranaly-poster:${posterToken}`)
+    }
     await refreshNotes()
     return saved
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '保存失败，请稍后重试。'
     return null
+  } finally {
+    saving.value = false
+  }
+}
+
+async function saveAsNewVersion() {
+  if (!draft.value || !image.value || saving.value || isPublished.value) return
+  saving.value = true
+  error.value = ''
+  try {
+    const saved = await saveXiaohongshuNote({
+      image: image.value, requirements: requirements.value.trim(),
+      title: draft.value.title.trim(), body: draft.value.body.trim(),
+      tagsText: tagsText.value.trim(), taskId: linkedTaskId.value, directionIndex: linkedDirection.value,
+    })
+    currentNote.value = saved
+    imageChanged.value = false
+    saveStatus.value = '已另存为新草稿，原版本保留在创作记录中。'
+    if (route.name === 'share-xiaohongshu') {
+      await router.replace({ name: 'share-xiaohongshu', query: { noteId: saved.id } })
+    }
+    await refreshNotes()
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '另存为新版本失败。'
   } finally {
     saving.value = false
   }
@@ -357,7 +515,8 @@ async function generate() {
   }
   generating.value = true
   try {
-    const result = await generateXiaohongshuDraft(image.value, request, selectedMaterialIds.value)
+    const result = await generateXiaohongshuDraft(image.value, request, selectedMaterialIds.value,
+      linkedTaskId.value, linkedDirection.value)
     draft.value = result
     tagsText.value = result.hashtags.map((tag) => `#${tag.replace(/^#+/, '')}`).join(' ')
     saveStatus.value = ''
@@ -541,7 +700,12 @@ onMounted(() => {
   void refreshMaterials()
 })
 
+watch(() => [route.query.taskId, route.query.direction, route.query.noteId, route.query.imageId, route.query.poster], () => {
+  if (!isRecordsPage.value && !isMaterialsPage.value) void loadRouteContext()
+}, { immediate: true })
+
 onUnmounted(() => {
+  routeContextVersion++
   window.removeEventListener('message', handleExtensionMessage)
   window.clearTimeout(publishTimeout)
   clearImage()
@@ -563,6 +727,25 @@ onUnmounted(() => {
   <div v-if="!isRecordsPage && !isMaterialsPage" class="share-layout">
     <section class="panel share-compose" aria-label="生成发布文案">
       <h2>创作素材</h2>
+      <div v-if="linkedTaskId" class="xhs-linked-task">
+        <strong>来自需求：{{ linkedTaskTitle }}</strong>
+        <RouterLink :to="{ name: 'creative-workbench-task', params: { id: linkedTaskId } }">查看创作简报</RouterLink>
+        <p>已确认的简报和宣传方向会参与生成；下面的文字要求仍可补充修改。</p>
+        <div v-if="linkedBrief" class="field">
+          <label for="linked-direction">本次宣传方向</label>
+          <select id="linked-direction" v-model="linkedDirection" :disabled="generating || saving || isPublished">
+            <option v-for="(direction, index) in linkedBrief.directions" :key="index" :value="index">{{ direction.name }}</option>
+          </select>
+        </div>
+        <div v-if="linkedImages.length" class="xhs-linked-task__images">
+          <button v-for="item in linkedImages" :key="item.id" type="button" :disabled="loadingTaskContext || generating || saving"
+            :class="{ 'is-active': image?.name === item.name }" @click="chooseLinkedImage(item)">
+            <img :src="`/api/tasks/${linkedTaskId}/images/${item.id}`" :alt="item.name" />
+            <span>{{ item.name }}</span>
+          </button>
+        </div>
+        <p v-else class="field-hint">这份需求没有图片，请在下方上传一张本次要发布的图片。</p>
+      </div>
       <form @submit.prevent="generate">
         <div class="field xhs-upload-field">
           <span class="field-label">上传图片 <span class="required">*</span></span>
@@ -650,6 +833,7 @@ onUnmounted(() => {
         <div class="share-result__actions">
           <button v-if="!isPublished" class="button button--secondary" type="button" :disabled="saving || generating || preparingPublish || !image || (!isDirty && !!currentNote)"
             @click="saveNote">{{ saving ? '正在保存…' : currentNote ? '保存修改' : '保存当前文案' }}</button>
+          <button v-if="currentNote && !isPublished" class="button button--quiet" type="button" :disabled="saving || generating || preparingPublish" @click="saveAsNewVersion">另存为新版本</button>
           <button class="button button--quiet" type="button" @click="copyTitle">复制标题</button>
           <button class="button button--quiet" type="button" @click="copyBody">复制正文与话题</button>
           <button v-if="!isPublished && publishExtensionReady" class="button" type="button" :disabled="preparingPublish || saving"

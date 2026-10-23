@@ -32,8 +32,10 @@ public class XiaohongshuDraftController {
     @PostMapping(path = "/generate", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public XiaohongshuDraftResponse generate(@RequestParam("image") MultipartFile image,
             @RequestParam(value = "requirements", defaultValue = "") String requirements,
-            @RequestParam(value = "materialIds", required = false) List<Long> materialIds) {
-        return service.generate(image, requirements, materialService.selected(materialIds));
+            @RequestParam(value = "materialIds", required = false) List<Long> materialIds,
+            @RequestParam(required = false) Long taskId,
+            @RequestParam(required = false) Integer direction) {
+        return service.generate(image, requirements, materialService.selected(materialIds), taskId, direction);
     }
 
     @GetMapping("/materials")
@@ -64,6 +66,11 @@ public class XiaohongshuDraftController {
         return noteService.list(status);
     }
 
+    @GetMapping("/tasks/{taskId}/notes")
+    public List<XiaohongshuNoteResponse> notesByTask(@PathVariable Long taskId) {
+        return noteService.listByTask(taskId);
+    }
+
     @GetMapping("/notes/{id}")
     public XiaohongshuNoteResponse note(@PathVariable long id) {
         return noteService.get(id);
@@ -79,16 +86,18 @@ public class XiaohongshuDraftController {
     @PostMapping(path = "/notes", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public XiaohongshuNoteResponse save(@RequestParam MultipartFile image,
             @RequestParam(value = "requirements", defaultValue = "") String requirements, @RequestParam String title,
-            @RequestParam String body, @RequestParam(defaultValue = "") String tagsText) {
-        return noteService.create(image, requirements, title, body, tagsText);
+            @RequestParam String body, @RequestParam(defaultValue = "") String tagsText,
+            @RequestParam(required = false) Long taskId, @RequestParam(required = false) Integer directionIndex) {
+        return noteService.create(image, requirements, title, body, tagsText, taskId, directionIndex);
     }
 
     @PutMapping(path = "/notes/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public XiaohongshuNoteResponse update(@PathVariable long id,
             @RequestParam(required = false) MultipartFile image,
             @RequestParam(value = "requirements", defaultValue = "") String requirements, @RequestParam String title,
-            @RequestParam String body, @RequestParam(defaultValue = "") String tagsText) {
-        return noteService.update(id, image, requirements, title, body, tagsText);
+            @RequestParam String body, @RequestParam(defaultValue = "") String tagsText,
+            @RequestParam(required = false) Long taskId, @RequestParam(required = false) Integer directionIndex) {
+        return noteService.update(id, image, requirements, title, body, tagsText, taskId, directionIndex);
     }
 
     @PostMapping("/notes/{id}/published")

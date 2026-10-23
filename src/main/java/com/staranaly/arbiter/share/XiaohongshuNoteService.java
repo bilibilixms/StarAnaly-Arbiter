@@ -3,6 +3,9 @@ package com.staranaly.arbiter.share;
 import java.io.IOException;
 import java.util.List;
 
+import com.staranaly.arbiter.task.TaskNotFoundException;
+import com.staranaly.arbiter.task.TaskRepository;
+import com.staranaly.arbiter.task.TaskWorkflowStage;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,15 +17,25 @@ public class XiaohongshuNoteService {
     private static final long MAX_IMAGE_BYTES = 20_000_000L;
     private final XiaohongshuNoteRepository notes;
     private final XiaohongshuNoteImageRepository images;
+    private final TaskRepository tasks;
 
-    public XiaohongshuNoteService(XiaohongshuNoteRepository notes, XiaohongshuNoteImageRepository images) {
+    public XiaohongshuNoteService(XiaohongshuNoteRepository notes, XiaohongshuNoteImageRepository images,
+            TaskRepository tasks) {
         this.notes = notes;
         this.images = images;
+        this.tasks = tasks;
     }
 
     @Transactional(readOnly = true)
     public List<XiaohongshuNoteResponse> list(XiaohongshuNote.Status status) {
         return notes.findByStatusOrderByUpdatedAtDescIdDesc(status).stream()
+                .map(XiaohongshuNoteResponse::from).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<XiaohongshuNoteResponse> listByTask(Long taskId) {
+        if (!tasks.existsById(taskId)) throw new TaskNotFoundException(taskId);
+        return notes.findByTaskIdOrderByUpdatedAtDescIdDesc(taskId).stream()
                 .map(XiaohongshuNoteResponse::from).toList();
     }
 
@@ -42,10 +55,24 @@ public class XiaohongshuNoteService {
     @Transactional
     public XiaohongshuNoteResponse create(MultipartFile image, String requirements,
             String title, String body, String tagsText) {
+        return create(image, requirements, title, body, tagsText, null);
+    }
+
+    @Transactional
+    public XiaohongshuNoteResponse create(MultipartFile image, String requirements,
+            String title, String body, String tagsText, Long taskId) {
+        return create(image, requirements, title, body, tagsText, taskId, null);
+    }
+
+    @Transactional
+    public XiaohongshuNoteResponse create(MultipartFile image, String requirements,
+            String title, String body, String tagsText, Long taskId, Integer directionIndex) {
+        requireTask(taskId);
         TextContent text = validateText(requirements, title, body, tagsText);
         ImageContent content = validateImage(image);
         XiaohongshuNote note = notes.save(new XiaohongshuNote(text.requirements(), text.title(),
-                text.body(), text.tagsText(), safeName(image), content.mime(), content.bytes().length));
+                text.body(), text.tagsText(), safeName(image), content.mime(), content.bytes().length,
+                taskId, directionIndex));
         images.save(new XiaohongshuNoteImage(note.getId(), content.bytes()));
         return XiaohongshuNoteResponse.from(note);
     }
@@ -53,7 +80,27 @@ public class XiaohongshuNoteService {
     @Transactional
     public XiaohongshuNoteResponse update(long id, MultipartFile image, String requirements,
             String title, String body, String tagsText) {
+        return update(id, image, requirements, title, body, tagsText, null);
+    }
+
+    @Transactional
+    public XiaohongshuNoteResponse update(long id, MultipartFile image, String requirements,
+            String title, String body, String tagsText, Long taskId) {
+        return update(id, image, requirements, title, body, tagsText, taskId, null);
+    }
+
+    @Transactional
+    public XiaohongshuNoteResponse update(long id, MultipartFile image, String requirements,
+            String title, String body, String tagsText, Long taskId, Integer directionIndex) {
         XiaohongshuNote note = findDraft(id);
+        if (taskId != null && note.getTaskId() != null && !taskId.equals(note.getTaskId())) {
+            throw new XiaohongshuInputException("文案已关联另一份需求。");
+        }
+        if (taskId != null && note.getTaskId() == null) {
+            requireTask(taskId);
+            note.setTaskId(taskId);
+        }
+        if (directionIndex != null) note.setDirectionIndex(directionIndex);
         TextContent text = validateText(requirements, title, body, tagsText);
         note.updateText(text.requirements(), text.title(), text.body(), text.tagsText());
         if (image != null && !image.isEmpty()) {
@@ -72,9 +119,17 @@ public class XiaohongshuNoteService {
         XiaohongshuNote note = find(id);
         if (note.getStatus() == XiaohongshuNote.Status.DRAFT) {
             note.markPublished();
+            if (note.getTaskId() != null) {
+                tasks.findById(note.getTaskId()).ifPresent(task ->
+                        task.updatePlan(TaskWorkflowStage.PUBLISHED, task.getDiscussionSummary()));
+            }
             notes.flush();
         }
         return XiaohongshuNoteResponse.from(note);
+    }
+
+    private void requireTask(Long taskId) {
+        if (taskId != null && !tasks.existsById(taskId)) throw new TaskNotFoundException(taskId);
     }
 
     @Transactional

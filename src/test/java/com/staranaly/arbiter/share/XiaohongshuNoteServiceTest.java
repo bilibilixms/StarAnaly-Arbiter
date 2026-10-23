@@ -5,6 +5,9 @@ import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
+import com.staranaly.arbiter.task.Task;
+import com.staranaly.arbiter.task.TaskRepository;
+import com.staranaly.arbiter.task.TaskWorkflowStage;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -17,7 +20,8 @@ import static org.mockito.Mockito.when;
 class XiaohongshuNoteServiceTest {
     private final XiaohongshuNoteRepository notes = mock(XiaohongshuNoteRepository.class);
     private final XiaohongshuNoteImageRepository images = mock(XiaohongshuNoteImageRepository.class);
-    private final XiaohongshuNoteService service = new XiaohongshuNoteService(notes, images);
+    private final TaskRepository tasks = mock(TaskRepository.class);
+    private final XiaohongshuNoteService service = new XiaohongshuNoteService(notes, images, tasks);
 
     @Test
     void rejectsNonImageBeforeSaving() {
@@ -63,5 +67,18 @@ class XiaohongshuNoteServiceTest {
         assertThatThrownBy(() -> service.delete(1L))
                 .isInstanceOf(XiaohongshuInputException.class);
         verifyNoInteractions(images);
+    }
+
+    @Test
+    void publishingLinkedNoteAdvancesDemandStage() {
+        Task task = new Task("宣传新品", "需求说明");
+        XiaohongshuNote note = new XiaohongshuNote("要求", "标题", "正文", "",
+                "photo.jpg", "image/jpeg", 4, 42L, 1);
+        when(notes.findById(1L)).thenReturn(Optional.of(note));
+        when(tasks.findById(42L)).thenReturn(Optional.of(task));
+
+        service.markPublished(1L);
+
+        assertThat(task.getWorkflowStage()).isEqualTo(TaskWorkflowStage.PUBLISHED);
     }
 }

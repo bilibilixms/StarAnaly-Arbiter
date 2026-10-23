@@ -25,13 +25,22 @@ const spaceLabel = computed(() => typeof route.meta.space === 'string' ? route.m
             <rect x="4" y="4" width="16" height="16" rx="2" />
             <path d="M8 9h8M8 13h8M8 17h5" />
           </svg>
-          <span>任务列表</span>
+          <span>需求列表</span>
         </RouterLink>
         <RouterLink class="site-nav__link" to="/tasks/new">
           <svg class="site-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
             <path d="M12 5v14M5 12h14" />
           </svg>
-          <span>创建任务</span>
+          <span>新建需求</span>
+        </RouterLink>
+      </nav>
+      <p class="site-nav__heading site-nav__heading--secondary">工作台</p>
+      <nav class="site-nav" aria-label="工作台导航">
+        <RouterLink class="site-nav__link" to="/workbench">
+          <svg class="site-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 5h16v14H4zM8 9h8M8 13h5" />
+          </svg>
+          <span>宣传创作</span>
         </RouterLink>
       </nav>
       <p class="site-nav__heading site-nav__heading--secondary">分享空间</p>
