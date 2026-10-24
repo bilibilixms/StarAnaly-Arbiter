@@ -51,15 +51,20 @@ const spaceLabel = computed(() => typeof route.meta.space === 'string' ? route.m
         </RouterLink>
       </nav>
       <p class="site-nav__heading site-nav__heading--secondary">分享空间</p>
-      <nav class="site-nav" aria-label="分享空间导航">
-        <RouterLink class="site-nav__link" to="/share/douyin">
+      <div class="site-nav__group" aria-label="抖音">
+        <p class="site-nav__group-title">
           <svg class="site-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <rect x="3" y="3" width="18" height="18" rx="5" />
             <path d="m10 8 6 4-6 4V8Z" />
           </svg>
           <span>抖音</span>
-        </RouterLink>
-      </nav>
+        </p>
+        <nav class="site-nav site-nav--nested" aria-label="抖音导航">
+          <RouterLink class="site-nav__link" to="/share/douyin" exact-active-class="router-link-active">图文创作</RouterLink>
+          <RouterLink class="site-nav__link" to="/share/douyin/records">创作记录</RouterLink>
+          <RouterLink class="site-nav__link" to="/share/douyin/materials">素材管理</RouterLink>
+        </nav>
+      </div>
       <div class="site-nav__group" aria-label="小红书">
         <p class="site-nav__group-title">
           <svg class="site-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

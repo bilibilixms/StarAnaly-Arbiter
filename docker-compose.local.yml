@@ -18,6 +18,9 @@ services:
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       MODEL_BASE_URL: ${MODEL_BASE_URL:-https://api.deepseek.com}
       MODEL_NAME: ${MODEL_NAME:-deepseek-flash}
+      POSTER_API_KEY: ${POSTER_API_KEY:-}
+      POSTER_API_BASE_URL: ${POSTER_API_BASE_URL:-}
+      POSTER_MODEL: ${POSTER_MODEL:-qwen-image-3.0-pro}
     ports:
       - "8080:8080"
     depends_on:

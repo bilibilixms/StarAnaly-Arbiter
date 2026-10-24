@@ -32,8 +32,19 @@ const router = createRouter({
       path: '/share/douyin',
       name: 'share-douyin',
       meta: { space: '分享空间' },
-      component: () => import('@/views/SharePlatformView.vue'),
-      props: { platform: 'douyin' },
+      component: () => import('@/views/DouyinView.vue'),
+    },
+    {
+      path: '/share/douyin/records',
+      name: 'share-douyin-records',
+      meta: { space: '分享空间' },
+      component: () => import('@/views/DouyinView.vue'),
+    },
+    {
+      path: '/share/douyin/materials',
+      name: 'share-douyin-materials',
+      meta: { space: '分享空间' },
+      component: () => import('@/views/DouyinView.vue'),
     },
     {
       path: '/share/xiaohongshu',

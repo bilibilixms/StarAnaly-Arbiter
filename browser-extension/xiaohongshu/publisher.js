@@ -135,12 +135,12 @@
     return null
   }
 
-  function imageFile(draft) {
-    const encoded = draft.imageData.slice(draft.imageData.indexOf(',') + 1)
+  function imageFile(image) {
+    const encoded = image.data.slice(image.data.indexOf(',') + 1)
     const binary = atob(encoded)
     const bytes = new Uint8Array(binary.length)
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-    return new File([bytes], draft.imageName, { type: draft.imageType })
+    return new File([bytes], image.name, { type: image.type })
   }
 
   function chooseImageTab() {
@@ -154,7 +154,7 @@
     await new Promise((resolve) => setTimeout(resolve, 350))
     const input = await waitFor(findUploadInput, 15000)
     const files = new DataTransfer()
-    files.items.add(imageFile(draft))
+    for (const image of draft.images) files.items.add(imageFile(image))
     input.files = files.files
     input.dispatchEvent(new Event('input', { bubbles: true }))
     input.dispatchEvent(new Event('change', { bubbles: true }))
@@ -218,7 +218,7 @@
         return
       }
       const draft = response.draft
-      if (!Array.isArray(draft.topics)) {
+      if (!Array.isArray(draft.topics) || !Array.isArray(draft.images)) {
         throw new Error('当前草稿来自旧版扩展，请返回星析重新点击“去发布”。')
       }
       if (!isPublishPage()) {
@@ -248,9 +248,9 @@
       const cleared = await chrome.runtime.sendMessage({ kind: 'CLEAR_DRAFT' })
       if (!cleared?.ok) throw new Error('扩展未能保存发布跟踪状态，请重试填入。')
       publicationFilledAt = Date.now()
-      draft.imageData = ''
+      draft.images = []
       finished = true
-      showStatus('图片、标题、正文和有效话题已填入。请逐项检查，然后由你点击小红书的发布按钮。')
+      showStatus('图片、标题、正文和有效话题已填入。请检查图片数量及内容，再由你点击小红书的发布按钮。')
     } catch (error) {
       waitingForPublish = false
       showStatus(error instanceof Error ? error.message : '自动填入失败，请检查页面后重试。', true)

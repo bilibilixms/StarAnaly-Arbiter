@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import {
-  generateCreativeBrief, getCreativeBrief, getTask, listTaskImages, listTasks,
-  saveCreativeBrief, updateTaskPlan,
-  type CreativeBrief, type CreativeBriefResponse, type Task, type TaskImage,
-} from '@/api/tasks'
+import { getTask, listTaskImages, listTasks, type Task, type TaskImage } from '@/api/tasks'
 import { listTaskXiaohongshuNotes, type XiaohongshuNote } from '@/api/sharing'
+import { listTaskDouyinNotes, type DouyinNote } from '@/api/douyin'
+import { makeTemplatePosters } from '@/poster/template'
+import { generateAiPosters, getPosterStatus } from '@/api/posters'
+import { savePosterTransfer } from '@/poster/transfer'
 import { formatCreatedAt } from '@/task/format'
 
+interface Batch { revision: number; files: File[]; urls: string[] }
 const route = useRoute()
 const router = useRouter()
 const taskId = computed(() => {
@@ -18,37 +19,32 @@ const taskId = computed(() => {
 const task = ref<Task | null>(null)
 const images = ref<TaskImage[]>([])
 const notes = ref<XiaohongshuNote[]>([])
-const brief = ref<CreativeBriefResponse | null>(null)
-const form = ref<CreativeBrief | null>(null)
+const douyinNotes = ref<DouyinNote[]>([])
 const tasks = ref<Task[]>([])
 const search = ref('')
 const taskPage = ref(0)
 const taskTotalPages = ref(0)
 const loading = ref(false)
 const generating = ref(false)
-const saving = ref(false)
-const posterBusy = ref(false)
-const posterTheme = ref<'sky' | 'rose' | 'night'>('sky')
+const aiConfigured = ref(false)
+const handoffBusy = ref(false)
+const count = ref(2)
+const direction = ref('')
+const revisionAdvice = ref('')
+const referenceId = ref<number | null>(null)
+const batches = ref<Batch[]>([])
+const activeBatchIndex = ref(0)
+const selected = ref<number[]>([])
 const error = ref('')
 const notice = ref('')
 let loadVersion = 0
+const activeBatch = computed(() => batches.value[activeBatchIndex.value] ?? null)
 
-const dirty = computed(() => {
-  if (!brief.value || !form.value) return false
-  const { objective, audience, coreMessage, tone, facts, unknowns, directions } = brief.value
-  return JSON.stringify(form.value) !== JSON.stringify({ objective, audience, coreMessage, tone, facts, unknowns, directions })
-})
-
-function copyBrief(value: CreativeBriefResponse) {
-  form.value = {
-    objective: value.objective,
-    audience: value.audience,
-    coreMessage: value.coreMessage,
-    tone: value.tone,
-    facts: value.facts.map((fact) => ({ ...fact })),
-    unknowns: [...value.unknowns],
-    directions: value.directions.map((direction) => ({ ...direction })),
-  }
+function clearBatches() {
+  for (const batch of batches.value) batch.urls.forEach(URL.revokeObjectURL)
+  batches.value = []
+  activeBatchIndex.value = 0
+  selected.value = []
 }
 
 async function load() {
@@ -56,10 +52,10 @@ async function load() {
   error.value = ''
   notice.value = ''
   task.value = null
-  brief.value = null
-  form.value = null
   images.value = []
   notes.value = []
+  douyinNotes.value = []
+  clearBatches()
   loading.value = true
   try {
     if (taskId.value === null) {
@@ -70,16 +66,18 @@ async function load() {
       }
       return
     }
-    const [nextTask, nextBrief, nextImages, nextNotes] = await Promise.all([
-      getTask(taskId.value), getCreativeBrief(taskId.value), listTaskImages(taskId.value),
-      listTaskXiaohongshuNotes(taskId.value),
+    const [nextTask, nextImages, nextNotes, nextDouyinNotes] = await Promise.all([
+      getTask(taskId.value), listTaskImages(taskId.value), listTaskXiaohongshuNotes(taskId.value),
+      listTaskDouyinNotes(taskId.value),
     ])
     if (version !== loadVersion) return
     task.value = nextTask
-    brief.value = nextBrief
     images.value = nextImages
     notes.value = nextNotes
-    if (nextBrief) copyBrief(nextBrief)
+    douyinNotes.value = nextDouyinNotes
+    aiConfigured.value = await getPosterStatus().catch(() => false)
+    direction.value = nextTask.title
+    referenceId.value = nextImages[0]?.id ?? null
   } catch (cause) {
     if (version === loadVersion) error.value = cause instanceof Error ? cause.message : '加载工作台失败。'
   } finally {
@@ -87,143 +85,87 @@ async function load() {
   }
 }
 
-function searchTasks() {
-  taskPage.value = 0
-  void load()
-}
-
+function searchTasks() { taskPage.value = 0; void load() }
 function changePage(next: number) {
   if (next < 0 || next >= taskTotalPages.value) return
   taskPage.value = next
   void load()
 }
 
-async function generate() {
-  if (taskId.value === null || generating.value) return
+async function generatePosters() {
+  const current = task.value
   const id = taskId.value
-  if (dirty.value && !window.confirm('当前简报有未保存修改，重新提炼会覆盖这些修改。确定继续吗？')) return
+  if (!current || id === null || generating.value) return
+  const amount = Number(count.value)
+  if (!Number.isInteger(amount) || amount < 1 || amount > 4) {
+    error.value = '一次请选择生成 1 至 4 张海报。'
+    return
+  }
+  const goal = direction.value.trim()
+  const advice = revisionAdvice.value.trim()
+  if (!goal) { error.value = '请填写海报主题。'; return }
   generating.value = true
   error.value = ''
   notice.value = ''
   try {
-    const result = await generateCreativeBrief(id)
-    if (taskId.value !== id) return
-    brief.value = result
-    copyBrief(result)
-    notice.value = '已根据当前需求材料提炼简报。请逐项核对事实与出处，再确认。'
-  } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '生成简报失败。'
-  } finally {
-    generating.value = false
-  }
-}
-
-async function save(confirmed: boolean) {
-  const id = taskId.value
-  if (id === null || !form.value || saving.value) return
-  saving.value = true
-  error.value = ''
-  notice.value = ''
-  try {
-    const result = await saveCreativeBrief(id, form.value, confirmed)
-    if (taskId.value !== id) return
-    brief.value = result
-    copyBrief(result)
-    if (confirmed && task.value?.workflowStage === 'PLANNING') {
-      task.value = await updateTaskPlan(id, 'CREATING', task.value.discussionSummary ?? '')
-    }
-    notice.value = confirmed ? '简报已确认，可选择方向进入小红书创作。' : '简报草稿已保存。'
-  } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '保存简报失败。'
-  } finally {
-    saving.value = false
-  }
-}
-
-function addFact() {
-  if (form.value && form.value.facts.length < 20) form.value.facts.push({ text: '', source: '待核实' })
-}
-
-function addUnknown() {
-  if (form.value && form.value.unknowns.length < 20) form.value.unknowns.push('')
-}
-
-function addDirection() {
-  if (form.value && form.value.directions.length < 3) {
-    form.value.directions.push({ name: '', angle: '', headlineIdea: '' })
-  }
-}
-
-function wrapText(context: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
-  const lines: string[] = []
-  let line = ''
-  for (const char of Array.from(text)) {
-    if (line && context.measureText(line + char).width > maxWidth) {
-      lines.push(line)
-      line = char
+    const revision = batches.value.length + 1
+    const reference = images.value.find((item) => item.id === referenceId.value)
+    let files: File[]
+    if (aiConfigured.value) {
+      let referenceImage = advice && activeBatch.value
+        ? activeBatch.value.files[selected.value[0] ?? 0]
+        : undefined
+      if (!referenceImage && reference) {
+        const response = await fetch(`/api/tasks/${id}/images/${reference.id}`)
+        if (!response.ok) throw new Error('无法读取参考图片。')
+        referenceImage = new File([await response.blob()], reference.name, { type: reference.mime })
+      }
+      files = await generateAiPosters({ taskId: id, direction: goal, advice, count: amount, referenceImage })
     } else {
-      line += char
+      files = await makeTemplatePosters({
+        title: current.title,
+        description: [current.description, current.discussionSummary].filter(Boolean).join('；'),
+        direction: advice || goal,
+        sourceImage: reference ? `/api/tasks/${id}/images/${reference.id}` : undefined,
+        count: amount,
+        revision,
+      })
     }
-  }
-  if (line) lines.push(line)
-  return lines
+    if (id !== taskId.value) return
+    batches.value.push({ revision, files, urls: files.map((file) => URL.createObjectURL(file)) })
+    activeBatchIndex.value = batches.value.length - 1
+    selected.value = files.map((_, index) => index)
+    revisionAdvice.value = ''
+    notice.value = `第 ${revision} 版海报已生成。请检查图片，再选择要带去发布的海报。`
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '生成海报失败。'
+  } finally { generating.value = false }
 }
 
-async function makeTextPoster(index: number) {
-  const id = taskId.value
-  const content = form.value
-  if (id === null || !task.value || !content || posterBusy.value || !brief.value?.confirmed || dirty.value) return
-  const direction = content.directions[index]
-  if (!direction) return
-  posterBusy.value = true
+function selectBatch(index: number) {
+  activeBatchIndex.value = index
+  selected.value = batches.value[index]?.files.map((_, position) => position) ?? []
+}
+function togglePoster(index: number) {
+  selected.value = selected.value.includes(index)
+    ? selected.value.filter((item) => item !== index)
+    : [...selected.value, index].sort((a, b) => a - b)
+}
+async function goToShare(platform: 'xiaohongshu' | 'douyin') {
+  if (!activeBatch.value || !taskId.value || handoffBusy.value) return
+  const files = selected.value.map((index) => activeBatch.value?.files[index]).filter((file): file is File => !!file)
+  if (!files.length) { error.value = '请至少选择 1 张海报。'; return }
+  handoffBusy.value = true
   error.value = ''
   try {
-    const canvas = document.createElement('canvas')
-    canvas.width = 1080
-    canvas.height = 1350
-    const context = canvas.getContext('2d')
-    if (!context) throw new Error('浏览器无法绘制海报。')
-    const palettes = {
-      sky: { top: '#e4f5ff', bottom: '#fff7fc', ink: '#173f62', accent: '#3b91c7' },
-      rose: { top: '#fff0f7', bottom: '#fffaf1', ink: '#63334c', accent: '#c75e93' },
-      night: { top: '#142b49', bottom: '#36456c', ink: '#f8fbff', accent: '#a6d9ff' },
-    }
-    const palette = palettes[posterTheme.value]
-    const gradient = context.createLinearGradient(0, 0, 1080, 1350)
-    gradient.addColorStop(0, palette.top)
-    gradient.addColorStop(1, palette.bottom)
-    context.fillStyle = gradient
-    context.fillRect(0, 0, 1080, 1350)
-    context.fillStyle = palette.accent
-    context.fillRect(88, 128, 84, 8)
-    context.font = '600 32px "PingFang SC", "Microsoft YaHei", sans-serif'
-    context.fillText(task.value.title.slice(0, 30), 88, 222, 900)
-    context.font = '700 78px "PingFang SC", "Microsoft YaHei", sans-serif'
-    context.fillStyle = palette.ink
-    const title = direction.headlineIdea || direction.name
-    const titleLines = wrapText(context, title, 900).slice(0, 5)
-    titleLines.forEach((line, lineIndex) => context.fillText(line, 88, 388 + lineIndex * 104))
-    const dividerY = Math.max(780, 440 + titleLines.length * 104)
-    context.fillStyle = palette.accent
-    context.fillRect(88, dividerY, 900, 3)
-    context.font = '400 38px "PingFang SC", "Microsoft YaHei", sans-serif'
-    context.fillStyle = palette.ink
-    wrapText(context, content.coreMessage, 900).slice(0, 5)
-      .forEach((line, lineIndex) => context.fillText(line, 88, dividerY + 96 + lineIndex * 62))
-    const token = crypto.randomUUID()
-    sessionStorage.setItem(`staranaly-poster:${token}`, JSON.stringify({
-      name: `${task.value.title.slice(0, 24)}-方向${index + 1}.jpg`,
-      dataUrl: canvas.toDataURL('image/jpeg', 0.88),
-    }))
-    await router.push({ name: 'share-xiaohongshu', query: { taskId: id, direction: index, poster: token } })
+    const poster = await savePosterTransfer(files)
+    await router.push({ name: `share-${platform}`, query: { taskId: taskId.value, poster } })
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '生成文字海报失败。'
-  } finally {
-    posterBusy.value = false
-  }
+    error.value = cause instanceof Error ? cause.message : '无法交接海报。'
+  } finally { handoffBusy.value = false }
 }
-
 watch(() => route.params.id, () => { void load() }, { immediate: true })
+onUnmounted(clearBatches)
 </script>
 
 <template>
@@ -231,16 +173,15 @@ watch(() => route.params.id, () => { void load() }, { immediate: true })
     <div>
       <p class="eyebrow">创作工作台</p>
       <h1>{{ task ? task.title : '选择一份需求开始创作' }}</h1>
-      <p class="page-description">先提炼材料中的事实与方向，确认后再制作小红书宣传内容。</p>
+      <p class="page-description">根据需求制作海报，预览后调整方向，再把选中的图片带去发布。</p>
     </div>
     <RouterLink v-if="task" class="button button--secondary" :to="`/tasks/${task.id}`">返回需求单</RouterLink>
     <RouterLink v-else class="button button--secondary" to="/tasks/new">新建需求</RouterLink>
   </section>
-
   <p v-if="error" class="inline-error" role="alert">{{ error }}</p>
   <p v-if="notice" class="inline-success" role="status">{{ notice }}</p>
   <section v-if="taskId === null" class="panel workspace-section" aria-label="选择需求">
-    <div class="section-heading"><h2>需求单</h2><span class="muted">选择后提炼创作简报</span></div>
+    <div class="section-heading"><h2>需求单</h2><span class="muted">选择后生成海报</span></div>
     <form class="workbench-pick__search" @submit.prevent="searchTasks">
       <label for="workbench-search">查找需求</label>
       <input id="workbench-search" v-model="search" type="search" maxlength="200" placeholder="输入需求名称" />
@@ -249,12 +190,9 @@ watch(() => route.params.id, () => { void load() }, { immediate: true })
     <p v-if="loading" role="status">正在加载需求…</p>
     <p v-else-if="tasks.length === 0" class="empty-note">还没有匹配的需求。先创建一份需求单。</p>
     <ul v-else class="workbench-pick__list">
-      <li v-for="item in tasks" :key="item.id">
-        <RouterLink :to="{ name: 'creative-workbench-task', params: { id: item.id } }">
-          <strong>{{ item.title }}</strong>
-          <span>{{ formatCreatedAt(item.createdAt) }}</span>
-        </RouterLink>
-      </li>
+      <li v-for="item in tasks" :key="item.id"><RouterLink :to="{ name: 'creative-workbench-task', params: { id: item.id } }">
+        <strong>{{ item.title }}</strong><span>{{ formatCreatedAt(item.createdAt) }}</span>
+      </RouterLink></li>
     </ul>
     <div v-if="taskTotalPages > 1" class="pagination">
       <button class="button button--secondary" type="button" :disabled="taskPage === 0 || loading" @click="changePage(taskPage - 1)">上一页</button>
@@ -264,83 +202,46 @@ watch(() => route.params.id, () => { void load() }, { immediate: true })
   </section>
   <div v-else-if="loading" class="panel message" role="status">正在加载需求…</div>
   <template v-else-if="task">
-    <section class="panel workspace-section workbench-source" aria-label="原始需求">
-      <div class="section-heading"><h2>需求材料</h2><RouterLink class="text-link" :to="`/tasks/${task.id}`">修改文字或上传材料</RouterLink></div>
+    <section class="panel workspace-section workbench-source" aria-label="需求材料">
+      <div class="section-heading"><h2>需求材料</h2><RouterLink class="text-link" :to="`/tasks/${task.id}`">修改需求</RouterLink></div>
       <p class="workspace-description">{{ task.description || '尚未填写文字需求。' }}</p>
-      <p class="muted">已保存 {{ images.length }} 张图片。PDF、Word 和文字资料也会参与简报提炼。</p>
+      <p v-if="task.discussionSummary" class="muted">补充说明：{{ task.discussionSummary }}</p>
       <div v-if="images.length" class="workbench-source__images">
         <img v-for="item in images" :key="item.id" :src="`/api/tasks/${task.id}/images/${item.id}`" :alt="item.name" />
       </div>
-      <button class="button" type="button" :disabled="generating || saving" @click="generate">
-        {{ generating ? '正在识别材料并提炼…' : brief ? '重新提炼简报' : '提炼创作简报' }}
-      </button>
+      <p class="field-hint">海报生成会参考需求文字、补充说明、PDF 和 Word 的可提取文字，以及所选参考图片。</p>
     </section>
-
-    <section v-if="brief && form" class="panel workspace-section workbench-brief" aria-label="创作简报">
-      <div class="section-heading">
-        <div><h2>创作简报</h2><p class="muted">AI 提炼结果需要你对照原始材料确认。</p></div>
-        <span class="status-badge">{{ dirty ? '有未保存修改' : brief.sourcesChanged ? '材料已变化' : brief.confirmed ? '已确认' : '待确认' }}</span>
+    <section class="panel workspace-section poster-studio" aria-label="生成海报">
+      <div class="section-heading"><div><h2>生成海报</h2><p class="muted">{{ aiConfigured ? '千问图像 AI 已配置，可根据需求生成海报。' : '图像 AI 尚未配置地址与密钥；当前生成排版示意图。' }}</p></div><span class="status-badge">{{ aiConfigured ? 'AI 生成' : '排版示意' }}</span></div>
+      <div class="poster-studio__controls">
+        <div class="field"><label for="poster-direction">海报主题</label><textarea id="poster-direction" v-model="direction" rows="2" maxlength="300" placeholder="这张海报想表达什么？" /></div>
+        <div class="field"><label for="poster-count">生成张数</label><select id="poster-count" v-model.number="count"><option v-for="number in 4" :key="number" :value="number">{{ number }} 张</option></select></div>
+        <div v-if="images.length" class="field"><label for="poster-reference">参考图片</label><select id="poster-reference" v-model="referenceId"><option :value="null">不使用图片</option><option v-for="item in images" :key="item.id" :value="item.id">{{ item.name }}</option></select></div>
       </div>
-      <p v-if="brief.sourcesChanged" class="inline-error" role="status">需求材料或讨论结论已改变。请重新提炼，或核对当前简报后重新确认。</p>
-      <div class="workbench-brief__grid">
-        <div class="field"><label for="brief-objective">宣传目标</label><textarea id="brief-objective" v-model="form.objective" rows="3" maxlength="500" /></div>
-        <div class="field"><label for="brief-audience">目标受众</label><textarea id="brief-audience" v-model="form.audience" rows="3" maxlength="500" /></div>
-        <div class="field"><label for="brief-message">核心信息</label><textarea id="brief-message" v-model="form.coreMessage" rows="3" maxlength="500" /></div>
-        <div class="field"><label for="brief-tone">表达语气</label><textarea id="brief-tone" v-model="form.tone" rows="3" maxlength="300" /></div>
+      <div v-if="batches.length" class="field poster-studio__advice"><label for="poster-advice">下一版修改方向</label><textarea id="poster-advice" v-model="revisionAdvice" rows="2" maxlength="300" placeholder="例如：标题更醒目、整体偏浅粉、突出第一张参考图" /><p class="field-hint">保留前一版，生成后可切回查看。{{ aiConfigured ? '填写建议后，会以当前选中的第一张图片为参考继续生成。' : '当前示意会把建议作为下一版标题方向。' }}</p></div>
+      <button class="button" type="button" :disabled="generating || handoffBusy" @click="generatePosters">{{ generating ? '正在生成海报…' : batches.length ? '按新方向再生成' : '生成海报' }}</button>
+    </section>
+    <section v-if="activeBatch" class="panel workspace-section poster-preview" aria-label="海报预览">
+      <div class="section-heading"><div><h2>预览与挑选</h2><p class="muted">点击图片可选择或取消；发布时只带走选中的图片。</p></div><span class="status-badge">已选 {{ selected.length }} / {{ activeBatch.files.length }}</span></div>
+      <div v-if="batches.length > 1" class="poster-preview__versions" aria-label="生成版本">
+        <button v-for="(batch, index) in batches" :key="batch.revision" type="button" class="button button--quiet" :class="{ 'is-active': index === activeBatchIndex }" @click="selectBatch(index)">第 {{ batch.revision }} 版</button>
       </div>
-      <div class="workbench-brief__section">
-        <div class="section-heading"><h3>可确认的事实与出处</h3><button class="text-button" type="button" @click="addFact">添加事实</button></div>
-        <p class="field-hint">出处为“待核实”的内容，请检查后修改或删除。</p>
-        <div v-for="(fact, index) in form.facts" :key="index" class="workbench-brief__row">
-          <input v-model="fact.text" type="text" maxlength="500" :aria-label="`事实 ${index + 1}`" />
-          <input v-model="fact.source" type="text" maxlength="255" :aria-label="`事实 ${index + 1} 的出处`" />
-          <button class="text-button text-button--danger" type="button" :aria-label="`移除事实 ${index + 1}`" @click="form.facts.splice(index, 1)">移除</button>
-        </div>
+      <div class="poster-preview__grid">
+        <button v-for="(url, index) in activeBatch.urls" :key="url" type="button" class="poster-preview__card" :class="{ 'is-selected': selected.includes(index) }" :aria-pressed="selected.includes(index)" @click="togglePoster(index)">
+          <img :src="url" :alt="`第 ${activeBatch.revision} 版海报 ${index + 1}`" />
+          <span>{{ selected.includes(index) ? '✓ 已选择' : '点击选择' }} · 第 {{ index + 1 }} 张</span>
+        </button>
       </div>
-      <div class="workbench-brief__section">
-        <div class="section-heading"><h3>尚待确认</h3><button class="text-button" type="button" @click="addUnknown">添加问题</button></div>
-        <p v-if="form.unknowns.length === 0" class="empty-note">没有待确认信息。</p>
-        <div v-for="(unknown, index) in form.unknowns" :key="index" class="workbench-brief__row workbench-brief__row--unknown">
-          <input v-model="form.unknowns[index]" type="text" maxlength="500" :aria-label="`待确认问题 ${index + 1}`" />
-          <button class="text-button text-button--danger" type="button" @click="form.unknowns.splice(index, 1)">移除</button>
-        </div>
-      </div>
-      <div class="workbench-brief__section">
-        <div class="section-heading"><h3>宣传方向</h3><button v-if="form.directions.length < 3" class="text-button" type="button" @click="addDirection">添加方向</button></div>
-        <div class="workbench-poster-choice">
-          <label for="poster-theme">文字海报配色</label>
-          <select id="poster-theme" v-model="posterTheme">
-            <option value="sky">晴空</option><option value="rose">柔粉</option><option value="night">深蓝</option>
-          </select>
-          <span>没有可发布图片时，可用确认后的文字生成一张海报。</span>
-        </div>
-        <div class="workbench-directions">
-          <article v-for="(direction, index) in form.directions" :key="index" class="workbench-direction">
-            <div class="section-heading"><strong>方向 {{ index + 1 }}</strong><button v-if="form.directions.length > 1" class="text-button text-button--danger" type="button" @click="form.directions.splice(index, 1)">移除</button></div>
-            <label :for="`direction-name-${index}`">名称</label>
-            <input :id="`direction-name-${index}`" v-model="direction.name" maxlength="80" />
-            <label :for="`direction-angle-${index}`">切入点</label>
-            <textarea :id="`direction-angle-${index}`" v-model="direction.angle" rows="4" maxlength="500" />
-            <label :for="`direction-headline-${index}`">标题想法</label>
-            <input :id="`direction-headline-${index}`" v-model="direction.headlineIdea" maxlength="120" />
-            <RouterLink v-if="brief.confirmed && !brief.sourcesChanged && !dirty" class="button button--secondary"
-              :to="{ name: 'share-xiaohongshu', query: { taskId: task.id, direction: index } }">用此方向创作小红书</RouterLink>
-            <button v-if="brief.confirmed && !brief.sourcesChanged && !dirty" class="button button--quiet" type="button"
-              :disabled="posterBusy" @click="makeTextPoster(index)">{{ posterBusy ? '正在制作…' : '制作文字海报并创作' }}</button>
-          </article>
-        </div>
-      </div>
-      <div class="workbench-brief__actions">
-        <button class="button button--secondary" type="button" :disabled="saving" @click="save(false)">保存草稿</button>
-        <button class="button" type="button" :disabled="saving" @click="save(true)">{{ saving ? '正在保存…' : '确认简报' }}</button>
+      <div class="poster-preview__actions">
+        <button class="button" type="button" :disabled="!selected.length || handoffBusy" @click="goToShare('xiaohongshu')">{{ handoffBusy ? '正在准备图片…' : '带图片去小红书创作' }}</button>
+        <button class="button button--secondary" type="button" :disabled="!selected.length || handoffBusy" @click="goToShare('douyin')">{{ handoffBusy ? '正在准备图片…' : '带图片去抖音创作' }}</button>
       </div>
     </section>
-    <section v-if="notes.length" class="panel workspace-section" aria-label="关联作品">
-      <div class="section-heading"><h2>这份需求的作品</h2><span class="muted">{{ notes.length }} 篇</span></div>
+    <section v-if="notes.length || douyinNotes.length" class="panel workspace-section" aria-label="关联作品">
+      <div class="section-heading"><h2>这份需求的作品</h2><span class="muted">{{ notes.length + douyinNotes.length }} 篇</span></div>
       <ul class="workbench-pick__list">
-        <li v-for="note in notes" :key="note.id"><RouterLink :to="{ name: 'share-xiaohongshu', query: { noteId: note.id } }">
-          <strong>{{ note.title }}</strong><span>{{ note.status === 'PUBLISHED' ? '已发布' : '草稿' }}</span>
-        </RouterLink></li>
+        <li v-for="note in notes" :key="`xhs-${note.id}`"><RouterLink :to="{ name: 'share-xiaohongshu', query: { noteId: note.id } }"><strong>{{ note.title }}</strong><span>小红书 · {{ note.status === 'PUBLISHED' ? '已发布' : '草稿' }}</span></RouterLink></li>
+        <li v-for="note in douyinNotes" :key="`dy-${note.id}`"><RouterLink :to="{ name: 'share-douyin', query: { noteId: note.id } }"><strong>{{ note.title }}</strong><span>抖音 · {{ note.status === 'PUBLISHED' ? '已发布' : '草稿' }}</span></RouterLink></li>
       </ul>
     </section>
   </template>

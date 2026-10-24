@@ -20,8 +20,9 @@ import static org.mockito.Mockito.when;
 class XiaohongshuNoteServiceTest {
     private final XiaohongshuNoteRepository notes = mock(XiaohongshuNoteRepository.class);
     private final XiaohongshuNoteImageRepository images = mock(XiaohongshuNoteImageRepository.class);
+    private final XiaohongshuNoteExtraImageRepository extraImages = mock(XiaohongshuNoteExtraImageRepository.class);
     private final TaskRepository tasks = mock(TaskRepository.class);
-    private final XiaohongshuNoteService service = new XiaohongshuNoteService(notes, images, tasks);
+    private final XiaohongshuNoteService service = new XiaohongshuNoteService(notes, images, extraImages, tasks);
 
     @Test
     void rejectsNonImageBeforeSaving() {

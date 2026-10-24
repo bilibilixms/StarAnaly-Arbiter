@@ -78,8 +78,8 @@ public class CreativeBriefService {
         List<ModelConversationMessage> prompt = new ArrayList<>();
         prompt.add(ModelConversationMessage.text("system", SYSTEM_PROMPT));
         StringBuilder context = new StringBuilder("需求标题：" + task.getTitle() + "\n");
-        context.append("【任务说明】\n").append(task.getDescription() == null ? "未填写" : task.getDescription()).append("\n");
-        context.append("【讨论结论】\n").append(task.getDiscussionSummary() == null ? "未填写" : task.getDiscussionSummary()).append("\n");
+        context.append("【原始要求】\n").append(task.getDescription() == null ? "未填写" : task.getDescription()).append("\n");
+        context.append("【个人补充说明】\n").append(task.getDiscussionSummary() == null ? "未填写" : task.getDiscussionSummary()).append("\n");
         int remaining = 18000;
         for (SourceDocument document : documents) {
             if (remaining <= 0) break;
@@ -195,7 +195,7 @@ public class CreativeBriefService {
     }
 
     private Set<String> sources(List<SourceDocument> documents, List<TaskImageResponse> imageList) {
-        Set<String> names = new java.util.HashSet<>(Set.of("任务说明", "讨论结论"));
+        Set<String> names = new java.util.HashSet<>(Set.of("原始要求", "个人补充说明", "任务说明", "讨论结论"));
         documents.forEach(document -> names.add("文档：" + document.name()));
         imageList.forEach(image -> names.add("图片：" + image.name()));
         return names;

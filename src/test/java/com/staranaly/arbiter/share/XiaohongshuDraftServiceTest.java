@@ -65,15 +65,21 @@ class XiaohongshuDraftServiceTest {
     }
 
     @Test
-    void linkedGenerationRequiresConfirmedBrief() {
+    void linkedGenerationCanProceedWithoutConfirmedBrief() {
         MultipartFile image = new MockMultipartFile("image", "photo.jpg", "image/jpeg",
                 new byte[] {(byte) 0xff, (byte) 0xd8, (byte) 0xff, 0x00});
         when(briefs.get(42L)).thenReturn(Optional.of(linkedBrief(false)));
+        when(taskImages.list(42L)).thenReturn(List.of());
+        when(gateway.next(anyList(), eq(false), any(Duration.class)))
+                .thenReturn(new ModelReply("{\"title\":\"宣传海报\",\"body\":\"看看这张海报。\",\"hashtags\":[]}", List.of()));
 
-        assertThatThrownBy(() -> service.generate(image, "", List.of(), 42L, 0))
-                .isInstanceOf(XiaohongshuInputException.class)
-                .hasMessageContaining("尚未确认");
-        verifyNoInteractions(gateway);
+        assertThat(service.generate(image, "海报来自需求单", List.of(), 42L, null).title()).isEqualTo("宣传海报");
+        verify(gateway).next(org.mockito.ArgumentMatchers.argThat(messages -> {
+            Object content = messages.get(1).toRequest().get("content");
+            if (!(content instanceof List<?> parts) || !(parts.get(0) instanceof Map<?, ?> text)) return false;
+            String prompt = text.get("text").toString();
+            return prompt.contains("海报来自需求单") && !prompt.contains("周六开放试玩");
+        }), eq(false), any(Duration.class));
     }
 
     @Test
@@ -121,6 +127,21 @@ class XiaohongshuDraftServiceTest {
             if (!(content instanceof List<?> parts) || !(parts.get(0) instanceof Map<?, ?> text)) return false;
             return text.get("text").toString().contains("根据这张图片创作");
         }), eq(false), any(Duration.class));
+    }
+
+    @Test
+    void recognizesAllImagesInMultiImageDraft() {
+        MultipartFile first = new MockMultipartFile("image", "one.jpg", "image/jpeg",
+                new byte[] {(byte) 0xff, (byte) 0xd8, (byte) 0xff, 0x00});
+        MultipartFile second = new MockMultipartFile("extraImages", "two.png", "image/png",
+                new byte[] {(byte) 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a});
+        when(gateway.next(anyList(), eq(false), any(Duration.class)))
+                .thenReturn(new ModelReply("{\"title\":\"两张图\",\"body\":\"记录这两张图片。\",\"hashtags\":[]}", List.of()));
+
+        assertThat(service.generate(first, List.of(second), "", List.of(), null, null).title()).isEqualTo("两张图");
+        verify(gateway).next(org.mockito.ArgumentMatchers.argThat(messages ->
+                messages.size() == 3 && messages.get(2).toRequest().get("content").toString().contains("image/png")),
+                eq(false), any(Duration.class));
     }
 
     @Test

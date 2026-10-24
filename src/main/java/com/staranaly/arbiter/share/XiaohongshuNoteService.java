@@ -17,12 +17,14 @@ public class XiaohongshuNoteService {
     private static final long MAX_IMAGE_BYTES = 20_000_000L;
     private final XiaohongshuNoteRepository notes;
     private final XiaohongshuNoteImageRepository images;
+    private final XiaohongshuNoteExtraImageRepository extraImages;
     private final TaskRepository tasks;
 
     public XiaohongshuNoteService(XiaohongshuNoteRepository notes, XiaohongshuNoteImageRepository images,
-            TaskRepository tasks) {
+            XiaohongshuNoteExtraImageRepository extraImages, TaskRepository tasks) {
         this.notes = notes;
         this.images = images;
+        this.extraImages = extraImages;
         this.tasks = tasks;
     }
 
@@ -52,6 +54,25 @@ public class XiaohongshuNoteService {
         return new ImageContent(image.getImageData(), note.getImageMime());
     }
 
+    @Transactional(readOnly = true)
+    public List<ImageInfo> imageInfos(long id) {
+        XiaohongshuNote note = find(id);
+        List<ImageInfo> result = new java.util.ArrayList<>();
+        result.add(new ImageInfo(0L, note.getImageName(), note.getImageMime(), note.getImageSize()));
+        extraImages.findByNoteIdOrderByPositionAsc(id).forEach(extra ->
+                result.add(new ImageInfo(extra.getId(), extra.getImageName(), extra.getImageMime(), extra.getImageSize())));
+        return result;
+    }
+
+    @Transactional(readOnly = true)
+    public ImageContent extraImage(long noteId, long imageId) {
+        find(noteId);
+        return extraImages.findById(imageId)
+                .filter(extra -> extra.getNoteId().equals(noteId))
+                .map(extra -> new ImageContent(extra.getImageData(), extra.getImageMime()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "图片不存在。"));
+    }
+
     @Transactional
     public XiaohongshuNoteResponse create(MultipartFile image, String requirements,
             String title, String body, String tagsText) {
@@ -67,13 +88,21 @@ public class XiaohongshuNoteService {
     @Transactional
     public XiaohongshuNoteResponse create(MultipartFile image, String requirements,
             String title, String body, String tagsText, Long taskId, Integer directionIndex) {
+        return create(image, List.of(), requirements, title, body, tagsText, taskId, directionIndex);
+    }
+
+    @Transactional
+    public XiaohongshuNoteResponse create(MultipartFile image, List<MultipartFile> extra,
+            String requirements, String title, String body, String tagsText, Long taskId, Integer directionIndex) {
         requireTask(taskId);
         TextContent text = validateText(requirements, title, body, tagsText);
         ImageContent content = validateImage(image);
+        List<ImageContent> extraContent = validateExtras(extra);
         XiaohongshuNote note = notes.save(new XiaohongshuNote(text.requirements(), text.title(),
                 text.body(), text.tagsText(), safeName(image), content.mime(), content.bytes().length,
                 taskId, directionIndex));
         images.save(new XiaohongshuNoteImage(note.getId(), content.bytes()));
+        saveExtras(note.getId(), extra, extraContent);
         return XiaohongshuNoteResponse.from(note);
     }
 
@@ -92,6 +121,12 @@ public class XiaohongshuNoteService {
     @Transactional
     public XiaohongshuNoteResponse update(long id, MultipartFile image, String requirements,
             String title, String body, String tagsText, Long taskId, Integer directionIndex) {
+        return update(id, image, null, requirements, title, body, tagsText, taskId, directionIndex);
+    }
+
+    @Transactional
+    public XiaohongshuNoteResponse update(long id, MultipartFile image, List<MultipartFile> extra,
+            String requirements, String title, String body, String tagsText, Long taskId, Integer directionIndex) {
         XiaohongshuNote note = findDraft(id);
         if (taskId != null && note.getTaskId() != null && !taskId.equals(note.getTaskId())) {
             throw new XiaohongshuInputException("文案已关联另一份需求。");
@@ -102,6 +137,7 @@ public class XiaohongshuNoteService {
         }
         if (directionIndex != null) note.setDirectionIndex(directionIndex);
         TextContent text = validateText(requirements, title, body, tagsText);
+        List<ImageContent> extraContent = extra == null ? null : validateExtras(extra);
         note.updateText(text.requirements(), text.title(), text.body(), text.tagsText());
         if (image != null && !image.isEmpty()) {
             ImageContent content = validateImage(image);
@@ -109,6 +145,9 @@ public class XiaohongshuNoteService {
             XiaohongshuNoteImage old = images.findById(id)
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "图片不存在。"));
             old.setImageData(content.bytes());
+            extraImages.deleteByNoteId(id);
+            extraImages.flush();
+            if (extraContent != null) saveExtras(id, extra, extraContent);
         }
         notes.flush();
         return XiaohongshuNoteResponse.from(note);
@@ -135,6 +174,7 @@ public class XiaohongshuNoteService {
     @Transactional
     public void delete(long id) {
         findDraft(id);
+        extraImages.deleteByNoteId(id);
         images.deleteById(id);
         notes.deleteById(id);
     }
@@ -195,6 +235,21 @@ public class XiaohongshuNoteService {
         return name.length() > 255 ? name.substring(name.length() - 255) : name;
     }
 
+    private static List<ImageContent> validateExtras(List<MultipartFile> extra) {
+        if (extra == null) return List.of();
+        if (extra.size() > 3) throw new XiaohongshuInputException("每篇图文最多保存 4 张图片。");
+        return extra.stream().map(XiaohongshuNoteService::validateImage).toList();
+    }
+
+    private void saveExtras(long noteId, List<MultipartFile> extra, List<ImageContent> contents) {
+        for (int i = 0; i < contents.size(); i++) {
+            ImageContent content = contents.get(i);
+            extraImages.save(new XiaohongshuNoteExtraImage(noteId, i + 1, safeName(extra.get(i)),
+                    content.mime(), content.bytes()));
+        }
+    }
+
     private record TextContent(String requirements, String title, String body, String tagsText) {}
     public record ImageContent(byte[] bytes, String mime) {}
+    public record ImageInfo(Long id, String name, String mime, int byteSize) {}
 }

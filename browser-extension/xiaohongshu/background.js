@@ -39,15 +39,18 @@ function validateDraft(draft) {
       || name !== name.trim() || /[\s#]/u.test(name) || Array.from(name).length > 30)) return false
   if (new Set(draft.topics).size !== draft.topics.length) return false
   if (Array.from([draft.body.trim(), ...draft.topics.map((name) => `#${name}`)].join(' ')).length > 1000) return false
-  if (typeof draft.imageName !== 'string' || !draft.imageName || draft.imageName.length > 255) return false
-  if (typeof draft.imageType !== 'string' || !['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(draft.imageType)) return false
-  if (typeof draft.imageData !== 'string') return false
-  const prefix = `data:${draft.imageType};base64,`
-  if (!draft.imageData.startsWith(prefix)) return false
-  const encodedLength = draft.imageData.length - prefix.length
-  if (encodedLength <= 0 || encodedLength % 4 !== 0) return false
-  const padding = draft.imageData.endsWith('==') ? 2 : draft.imageData.endsWith('=') ? 1 : 0
-  return encodedLength / 4 * 3 - padding <= MAX_IMAGE_BYTES
+  if (!Array.isArray(draft.images) || draft.images.length < 1 || draft.images.length > 4) return false
+  return draft.images.every((image) => {
+    if (typeof image.name !== 'string' || !image.name || image.name.length > 255) return false
+    if (typeof image.type !== 'string' || !['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(image.type)) return false
+    if (typeof image.data !== 'string') return false
+    const prefix = `data:${image.type};base64,`
+    if (!image.data.startsWith(prefix)) return false
+    const encodedLength = image.data.length - prefix.length
+    if (encodedLength <= 0 || encodedLength % 4 !== 0) return false
+    const padding = image.data.endsWith('==') ? 2 : image.data.endsWith('=') ? 1 : 0
+    return encodedLength / 4 * 3 - padding <= MAX_IMAGE_BYTES
+  })
 }
 
 async function prepareDraft(draft, sender) {

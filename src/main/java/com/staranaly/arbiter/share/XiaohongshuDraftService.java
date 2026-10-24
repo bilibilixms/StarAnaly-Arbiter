@@ -60,6 +60,11 @@ public class XiaohongshuDraftService {
 
     public XiaohongshuDraftResponse generate(MultipartFile image, String requirements,
             List<XiaohongshuMaterial> materials, Long taskId, Integer directionIndex) {
+        return generate(image, List.of(), requirements, materials, taskId, directionIndex);
+    }
+
+    public XiaohongshuDraftResponse generate(MultipartFile image, List<MultipartFile> extraImages,
+            String requirements, List<XiaohongshuMaterial> materials, Long taskId, Integer directionIndex) {
         String prompt = requirements == null ? "" : requirements.strip();
         if (prompt.length() > 2000) {
             throw new XiaohongshuInputException("文字要求不能超过 2000 字。");
@@ -81,24 +86,22 @@ public class XiaohongshuDraftService {
 
         StringBuilder instruction = new StringBuilder();
         if (taskId != null) {
-            CreativeBriefResponse brief = briefs.get(taskId)
-                    .orElseThrow(() -> new XiaohongshuInputException("请先在创作工作台生成并确认简报。"));
-            if (!brief.confirmed() || brief.sourcesChanged()) {
-                throw new XiaohongshuInputException("需求材料或简报尚未确认，请返回创作工作台核对。");
-            }
-            if (directionIndex == null || directionIndex < 0 || directionIndex >= brief.directions().size()) {
-                throw new XiaohongshuInputException("请选择简报中的宣传方向。");
-            }
-            var direction = brief.directions().get(directionIndex);
-            instruction.append("以下是用户已确认的创作简报。事实必须有依据；待确认事项不能写成已发生的事实。\n")
+            CreativeBriefResponse brief = briefs.get(taskId).orElse(null);
+            if (brief != null && brief.confirmed() && !brief.sourcesChanged()) {
+              var direction = directionIndex != null && directionIndex >= 0
+                      && directionIndex < brief.directions().size() ? brief.directions().get(directionIndex) : null;
+              instruction.append("以下是用户已确认的创作简报。事实必须有依据；待确认事项不能写成已发生的事实。\n")
                     .append("目标：").append(brief.objective()).append("\n受众：").append(brief.audience())
                     .append("\n核心信息：").append(brief.coreMessage()).append("\n语气：").append(brief.tone())
-                    .append("\n本次方向：").append(direction.name()).append("；").append(direction.angle())
-                    .append("\n标题想法（可调整）：").append(direction.headlineIdea()).append("\n已确认事实：\n");
+                    .append("\n已确认事实：\n");
+              if (direction != null) instruction.append("本次方向：").append(direction.name()).append("；")
+                      .append(direction.angle()).append("\n标题想法（可调整）：")
+                      .append(direction.headlineIdea()).append("\n");
             brief.facts().forEach(fact -> instruction.append("- ").append(fact.text())
                     .append("（来源：").append(fact.source()).append("）\n"));
             instruction.append("待确认、不得当作事实：\n");
             brief.unknowns().forEach(item -> instruction.append("- ").append(item).append("\n"));
+            }
         }
         if (materials != null && !materials.isEmpty()) {
             instruction.append("以下是本次优先参考的创作素材。请优先使用其中与图片和主题相关的具体信息及语气；素材未提及的个人经历不要补造。\n");
@@ -114,6 +117,23 @@ public class XiaohongshuDraftService {
         List<ModelConversationMessage> messages = new ArrayList<>();
         messages.add(ModelConversationMessage.text("system", SYSTEM_PROMPT));
         messages.add(ModelConversationMessage.imagePrompt(instruction.toString(), bytes, mimeType));
+        if (extraImages != null) {
+            if (extraImages.size() > 3) throw new XiaohongshuInputException("每篇图文最多 4 张图片。");
+            for (MultipartFile additional : extraImages) {
+                if (additional == null || additional.isEmpty() || additional.getSize() > MAX_IMAGE_BYTES)
+                    throw new XiaohongshuInputException("每张图片都必须非空且不超过 20 MB。");
+                try {
+                    byte[] additionalBytes = additional.getBytes();
+                    String additionalMime = detectMimeType(additionalBytes);
+                    if (additionalMime == null)
+                        throw new XiaohongshuInputException("图片仅支持 JPEG、PNG、GIF 或 WebP 格式。");
+                    messages.add(ModelConversationMessage.imagePrompt("本篇笔记的另一张待发布图片，请一并识别。",
+                            additionalBytes, additionalMime));
+                } catch (IOException exception) {
+                    throw new XiaohongshuInputException("无法读取上传的图片，请重新选择。");
+                }
+            }
+        }
         if (taskId != null) {
             for (TaskImageResponse reference : taskImages.list(taskId)) {
                 TaskImageService.ImageContent content = taskImages.content(taskId, reference.id());

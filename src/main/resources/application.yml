@@ -14,7 +14,12 @@ spring:
   servlet:
     multipart:
       max-file-size: 20MB
-      max-request-size: 21MB
+      max-request-size: 85MB
+
+poster:
+  api-key: ${POSTER_API_KEY:}
+  base-url: ${POSTER_API_BASE_URL:}
+  model: ${POSTER_MODEL:qwen-image-3.0-pro}
 
 staranaly:
   model:

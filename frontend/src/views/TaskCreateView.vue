@@ -15,7 +15,7 @@ async function submit() {
   error.value = ''
   const normalizedTitle = title.value.trim()
   if (!normalizedTitle) {
-    error.value = '请输入任务标题。'
+    error.value = '请输入需求名称。'
     return
   }
 
@@ -48,13 +48,13 @@ async function submit() {
     <form @submit.prevent="submit">
       <div class="field">
         <label for="task-title">需求名称 <span class="required">*</span></label>
-        <input id="task-title" v-model="title" name="title" type="text" maxlength="200" required autofocus placeholder="例如：准备新游戏首发宣传" />
+        <input id="task-title" v-model="title" name="title" type="text" maxlength="200" required autofocus placeholder="例如：新产品首发宣传" />
         <p class="field-hint">最多 200 个字符</p>
       </div>
 
       <div class="field">
         <label for="task-description">原始文字要求</label>
-        <textarea id="task-description" v-model="description" name="description" rows="7" maxlength="5000" placeholder="这件事的目标、背景或初步想法"></textarea>
+        <textarea id="task-description" v-model="description" name="description" rows="7" maxlength="5000" placeholder="直接粘贴客户发来的文字要求"></textarea>
         <p class="field-hint">选填，最多 5000 个字符</p>
       </div>
 

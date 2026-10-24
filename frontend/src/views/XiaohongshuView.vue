@@ -4,10 +4,11 @@ import { useRoute, useRouter } from 'vue-router'
 import { deleteXiaohongshuMaterial, deleteXiaohongshuNote, generateXiaohongshuDraft,
   getXiaohongshuNote,
   listXiaohongshuMaterials, listXiaohongshuNotes, saveXiaohongshuMaterial,
-  loadXiaohongshuImage, markXiaohongshuNotePublished, saveXiaohongshuNote,
+  loadXiaohongshuImages, markXiaohongshuNotePublished, saveXiaohongshuNote,
   type XiaohongshuDraft, type XiaohongshuMaterial, type XiaohongshuNote } from '@/api/sharing'
 import { getCreativeBrief, getTask, listTaskImages, loadTaskImage,
   type CreativeBriefResponse, type TaskImage } from '@/api/tasks'
+import { loadPosterTransfer, removePosterTransfer } from '@/poster/transfer'
 
 const maxImageBytes = 20_000_000
 const supportedTypes = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
@@ -21,6 +22,8 @@ const isMaterialsPage = computed(() => route.name === 'share-xiaohongshu-materia
 
 const image = ref<File | null>(null)
 const imageUrl = ref('')
+const extraImages = ref<File[]>([])
+const extraImageUrls = ref<string[]>([])
 const requirements = ref('')
 const draft = ref<XiaohongshuDraft | null>(null)
 const tagsText = ref('')
@@ -65,11 +68,12 @@ const saveStatus = ref('')
 let publishTimeout = 0
 const processingPublicationEvents = new Set<string>()
 
+const allImages = computed(() => image.value ? [image.value, ...extraImages.value] : [])
 const imageSize = computed(() => image.value ? `${(image.value.size / 1_000_000).toFixed(1)} MB` : '')
 const isPublished = computed(() => currentNote.value?.status === 'PUBLISHED')
 const publishExtensionReady = computed(() => {
   const match = /^(\d+)\.(\d+)\./.exec(extensionVersion.value)
-  return !!match && (Number(match[1]) > 0 || Number(match[2]) >= 5)
+  return !!match && (Number(match[1]) > 0 || Number(match[2]) >= 6)
 })
 const isDirty = computed(() => {
   const note = currentNote.value
@@ -86,7 +90,7 @@ function formatNoteTime(value: string) {
 const canShareImage = computed(() => {
   if (!image.value || typeof navigator.share !== 'function' || typeof navigator.canShare !== 'function') return false
   try {
-    return navigator.canShare({ files: [image.value] })
+    return navigator.canShare({ files: allImages.value })
   } catch {
     return false
   }
@@ -94,25 +98,34 @@ const canShareImage = computed(() => {
 
 function selectImage(event: Event) {
   const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
+  const files = [...(input.files ?? [])]
   input.value = ''
-  if (!file) return
+  if (!files.length) return
   error.value = ''
-  if (!supportedTypes.has(file.type)) {
+  if (files.length > 4) { error.value = '一次最多选择 4 张图片。'; return }
+  if (files.some((file) => !supportedTypes.has(file.type))) {
     error.value = '请选择 JPEG、PNG、GIF 或 WebP 图片。'
     return
   }
-  if (file.size === 0 || file.size > maxImageBytes) {
-    error.value = '图片必须非空，且不能超过 20 MB。'
+  if (files.some((file) => file.size === 0 || file.size > maxImageBytes)) {
+    error.value = '每张图片必须非空，且不能超过 20 MB。'
     return
   }
-  useImage(file)
+  useImages(files)
 }
 
 function useImage(file: File) {
+  useImages([file])
+}
+
+function useImages(files: File[]) {
+  if (!files.length || files.length > 4) throw new Error('请选择 1 至 4 张图片。')
   if (imageUrl.value) URL.revokeObjectURL(imageUrl.value)
-  image.value = file
-  imageUrl.value = URL.createObjectURL(file)
+  extraImageUrls.value.forEach(URL.revokeObjectURL)
+  image.value = files[0]!
+  imageUrl.value = URL.createObjectURL(files[0]!)
+  extraImages.value = files.slice(1)
+  extraImageUrls.value = files.slice(1).map(URL.createObjectURL)
   imageChanged.value = true
   saveStatus.value = ''
 }
@@ -175,11 +188,8 @@ async function loadRouteContext() {
   try {
     const [task, brief, images] = await Promise.all([getTask(id), getCreativeBrief(id), listTaskImages(id)])
     if (version !== routeContextVersion) return
-    if (!brief?.confirmed || brief.sourcesChanged) {
-      error.value = '这份需求的创作简报尚未确认，请返回工作台核对。'
-      return
-    }
-    if (!Number.isInteger(direction) || direction < 0 || direction >= brief.directions.length) {
+    if (route.query.direction !== undefined && (!brief || !Number.isInteger(direction)
+        || direction < 0 || direction >= brief.directions.length)) {
       error.value = '宣传方向无效，请从工作台重新选择。'
       return
     }
@@ -191,22 +201,16 @@ async function loadRouteContext() {
     linkedTaskId.value = id
     linkedTaskTitle.value = task.title
     linkedBrief.value = brief
-    linkedDirection.value = direction
+    linkedDirection.value = route.query.direction !== undefined ? direction : null
     linkedImages.value = images
-    const chosen = brief.directions[direction]
-    requirements.value = `宣传方向：${chosen.name}。切入点：${chosen.angle}。语气：${brief.tone}。`.slice(0, 2000)
+    const chosen = linkedDirection.value !== null ? brief?.directions[linkedDirection.value] : null
+    requirements.value = [task.description, task.discussionSummary,
+      chosen ? `宣传方向：${chosen.name}。切入点：${chosen.angle}。` : ''].filter(Boolean).join('\n').slice(0, 2000)
     const posterToken = typeof route.query.poster === 'string' ? route.query.poster : ''
     if (posterToken) {
-      const stored = sessionStorage.getItem(`staranaly-poster:${posterToken}`)
-      if (!stored) throw new Error('临时文字海报已失效，请返回工作台重新制作。')
-      const poster = JSON.parse(stored) as { name?: unknown; dataUrl?: unknown }
-      if (typeof poster.name !== 'string' || typeof poster.dataUrl !== 'string'
-          || !poster.dataUrl.startsWith('data:image/jpeg;base64,')) {
-        throw new Error('临时文字海报无法读取，请返回工作台重新制作。')
-      }
-      const blob = await (await fetch(poster.dataUrl)).blob()
+      const posters = await loadPosterTransfer(posterToken)
       if (version !== routeContextVersion) return
-      useImage(new File([blob], poster.name, { type: 'image/jpeg' }))
+      useImages(posters)
       return
     }
     const requestedImageId = Number(route.query.imageId)
@@ -221,8 +225,11 @@ async function loadRouteContext() {
 
 function clearImage() {
   if (imageUrl.value) URL.revokeObjectURL(imageUrl.value)
+  extraImageUrls.value.forEach(URL.revokeObjectURL)
   imageUrl.value = ''
   image.value = null
+  extraImages.value = []
+  extraImageUrls.value = []
   draft.value = null
   copyStatus.value = ''
   publishStatus.value = ''
@@ -379,10 +386,9 @@ async function openNote(note: XiaohongshuNote): Promise<boolean> {
   loadingNote.value = true
   libraryError.value = ''
   try {
-    const file = await loadXiaohongshuImage(note)
+    const files = await loadXiaohongshuImages(note)
     resetEditor()
-    image.value = file
-    imageUrl.value = URL.createObjectURL(file)
+    useImages(files)
     requirements.value = note.requirements
     draft.value = { title: note.title, body: note.body, hashtags: [] }
     tagsText.value = note.tagsText
@@ -424,6 +430,7 @@ async function saveNote(): Promise<XiaohongshuNote | null> {
   try {
     const saved = await saveXiaohongshuNote({
       image: currentNote.value && !imageChanged.value ? null : image.value,
+      extraImages: currentNote.value && !imageChanged.value ? undefined : extraImages.value,
       requirements: requirements.value.trim(), title, body, tagsText: tags,
       taskId: linkedTaskId.value, directionIndex: linkedDirection.value,
     }, currentNote.value?.id)
@@ -434,7 +441,7 @@ async function saveNote(): Promise<XiaohongshuNote | null> {
     if (route.name === 'share-xiaohongshu' && Number(route.query.noteId) !== saved.id) {
       const posterToken = typeof route.query.poster === 'string' ? route.query.poster : ''
       await router.replace({ name: 'share-xiaohongshu', query: { noteId: saved.id } })
-      if (posterToken) sessionStorage.removeItem(`staranaly-poster:${posterToken}`)
+      if (posterToken) await removePosterTransfer(posterToken).catch(() => {})
     }
     await refreshNotes()
     return saved
@@ -452,7 +459,7 @@ async function saveAsNewVersion() {
   error.value = ''
   try {
     const saved = await saveXiaohongshuNote({
-      image: image.value, requirements: requirements.value.trim(),
+      image: image.value, extraImages: extraImages.value, requirements: requirements.value.trim(),
       title: draft.value.title.trim(), body: draft.value.body.trim(),
       tagsText: tagsText.value.trim(), taskId: linkedTaskId.value, directionIndex: linkedDirection.value,
     })
@@ -515,7 +522,7 @@ async function generate() {
   }
   generating.value = true
   try {
-    const result = await generateXiaohongshuDraft(image.value, request, selectedMaterialIds.value,
+    const result = await generateXiaohongshuDraft(image.value, request, selectedMaterialIds.value, extraImages.value,
       linkedTaskId.value, linkedDirection.value)
     draft.value = result
     tagsText.value = result.hashtags.map((tag) => `#${tag.replace(/^#+/, '')}`).join(' ')
@@ -616,7 +623,7 @@ async function publishWithExtension() {
   if (!draft.value || !image.value || preparingPublish.value || saving.value || generating.value) return
   publishStatus.value = ''
   if (!publishExtensionReady.value) {
-    publishStatus.value = '请在 Edge 扩展管理页重新加载星析发布助手 0.5.0，再刷新此页面。'
+    publishStatus.value = '请在 Edge 扩展管理页重新加载星析发布助手 0.6.0，再刷新此页面。'
     return
   }
   const topics = parseTopics()
@@ -645,9 +652,9 @@ async function publishWithExtension() {
       title: draft.value.title.trim(),
       body: draft.value.body.trim(),
       topics,
-      imageName: image.value.name,
-      imageType: image.value.type,
-      imageData: await readImage(image.value),
+      images: await Promise.all(allImages.value.map(async (file) => ({
+        name: file.name, type: file.type, data: await readImage(file),
+      }))),
     }
     pendingRequestId.value = requestId
     window.postMessage({ source: appSource, kind: 'PREPARE', requestId, draft: payload }, location.origin)
@@ -669,7 +676,7 @@ async function shareViaDevice() {
   publishStatus.value = ''
   try {
     await navigator.share({
-      files: [image.value],
+      files: allImages.value,
       title: draft.value.title.trim(),
       text: bodyWithTags(),
     })
@@ -729,9 +736,9 @@ onUnmounted(() => {
       <h2>创作素材</h2>
       <div v-if="linkedTaskId" class="xhs-linked-task">
         <strong>来自需求：{{ linkedTaskTitle }}</strong>
-        <RouterLink :to="{ name: 'creative-workbench-task', params: { id: linkedTaskId } }">查看创作简报</RouterLink>
-        <p>已确认的简报和宣传方向会参与生成；下面的文字要求仍可补充修改。</p>
-        <div v-if="linkedBrief" class="field">
+        <RouterLink :to="{ name: 'creative-workbench-task', params: { id: linkedTaskId } }">返回海报工作台</RouterLink>
+        <p>需求文字、选中的海报和下面的补充要求会参与文案创作。</p>
+        <div v-if="linkedBrief?.directions.length && linkedDirection !== null" class="field">
           <label for="linked-direction">本次宣传方向</label>
           <select id="linked-direction" v-model="linkedDirection" :disabled="generating || saving || isPublished">
             <option v-for="(direction, index) in linkedBrief.directions" :key="index" :value="index">{{ direction.name }}</option>
@@ -748,22 +755,25 @@ onUnmounted(() => {
       </div>
       <form @submit.prevent="generate">
         <div class="field xhs-upload-field">
-          <span class="field-label">上传图片 <span class="required">*</span></span>
-          <input id="share-image" class="xhs-file-input" type="file" aria-label="上传图片" accept="image/jpeg,image/png,image/gif,image/webp"
+          <span class="field-label">上传图片（1–4 张） <span class="required">*</span></span>
+          <input id="share-image" class="xhs-file-input" type="file" aria-label="上传图片" accept="image/jpeg,image/png,image/gif,image/webp" multiple
             :disabled="generating || preparingPublish || isPublished || saving" @change="selectImage" />
           <label for="share-image" class="xhs-upload-control">
             <span class="xhs-upload-control__icon" aria-hidden="true">✦</span>
             <span class="xhs-upload-control__button">{{ image ? '更换图片' : '选择图片' }}</span>
-            <span class="xhs-upload-control__hint">支持 JPEG、PNG、GIF、WebP · 最大 20 MB</span>
+            <span class="xhs-upload-control__hint">支持 JPEG、PNG、GIF、WebP · 最多 4 张，每张最大 20 MB</span>
           </label>
         </div>
         <div v-if="image && imageUrl" class="share-image-preview">
           <img :src="imageUrl" :alt="`待创作图片：${image.name}`" />
           <div>
             <strong>{{ image.name }}</strong>
-            <span class="muted">{{ imageSize }}</span>
+            <span class="muted">{{ allImages.length }} 张 · 首图 {{ imageSize }}</span>
           <button v-if="!isPublished" class="text-button" type="button" :disabled="generating || preparingPublish || saving" @click="startNew">清空当前创作</button>
           </div>
+        </div>
+        <div v-if="extraImageUrls.length" class="xhs-extra-images" aria-label="其余待发布图片">
+          <img v-for="(url, index) in extraImageUrls" :key="url" :src="url" :alt="`待发布图片 ${index + 2}`" />
         </div>
         <section class="xhs-materials" aria-label="可复用的创作素材">
           <div class="xhs-materials__heading">
@@ -819,7 +829,7 @@ onUnmounted(() => {
       </div>
       <template v-else>
         <div class="share-note">
-          <img :src="imageUrl" :alt="image?.name || '发布图片'" />
+          <div class="share-note__images"><img :src="imageUrl" :alt="image?.name || '发布图片'" /><img v-for="(url, index) in extraImageUrls" :key="url" :src="url" :alt="`发布图片 ${index + 2}`" /></div>
           <div class="share-note__content">
             <label for="share-title">标题</label>
             <input id="share-title" v-model="draft.title" maxlength="20" :disabled="generating || preparingPublish || saving || isPublished" @input="edited" />

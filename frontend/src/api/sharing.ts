@@ -74,8 +74,21 @@ export async function loadXiaohongshuImage(note: XiaohongshuNote): Promise<File>
   })
 }
 
+export async function loadXiaohongshuImages(note: XiaohongshuNote): Promise<File[]> {
+  const response = await fetch(`${notesUrl}/${note.id}/images`)
+  if (!response.ok) throw new Error('读取保存的图片列表失败。')
+  const items = await response.json() as Array<{ id: number; name: string; mime: string }>
+  return Promise.all(items.map(async (item) => {
+    const path = item.id === 0 ? `${notesUrl}/${note.id}/image` : `${notesUrl}/${note.id}/images/${item.id}`
+    const imageResponse = await fetch(path)
+    if (!imageResponse.ok) throw new Error('读取保存的图片失败。')
+    return new File([await imageResponse.blob()], item.name, { type: item.mime })
+  }))
+}
+
 export function saveXiaohongshuNote(fields: {
   image?: File | null
+  extraImages?: File[]
   requirements: string
   title: string
   body: string
@@ -85,6 +98,7 @@ export function saveXiaohongshuNote(fields: {
 }, id?: number): Promise<XiaohongshuNote> {
   const form = new FormData()
   if (fields.image) form.append('image', fields.image)
+  if (fields.extraImages) for (const image of fields.extraImages) form.append('extraImages', image)
   form.append('requirements', fields.requirements)
   form.append('title', fields.title)
   form.append('body', fields.body)
@@ -131,9 +145,11 @@ export async function deleteXiaohongshuMaterial(id: number): Promise<void> {
 }
 
 export async function generateXiaohongshuDraft(image: File, requirements: string, materialIds: number[] = [],
+  extraImages: File[] = [],
   taskId?: number | null, direction?: number | null): Promise<XiaohongshuDraft> {
   const form = new FormData()
   form.append('image', image)
+  for (const extra of extraImages) form.append('extraImages', extra)
   form.append('requirements', requirements)
   for (const id of materialIds) form.append('materialIds', String(id))
   if (taskId) form.append('taskId', String(taskId))

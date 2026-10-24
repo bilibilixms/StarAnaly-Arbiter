@@ -1,17 +1,8 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from 'vue'
-import { listTasks, type TaskPage, type TaskStatus, type TaskTimeOrder } from '@/api/tasks'
-import { formatCreatedAt, statusLabel, workflowStageLabel } from '@/task/format'
-
-const statuses: Array<{ value: TaskStatus | ''; label: string }> = [
-  { value: '', label: '全部 AI 状态' },
-  { value: 'PENDING', label: '未执行' },
-  { value: 'RUNNING', label: '执行中' },
-  { value: 'SUCCEEDED', label: '回复完成' },
-  { value: 'FAILED', label: '执行失败' },
-]
+import { listTasks, type TaskPage, type TaskTimeOrder } from '@/api/tasks'
+import { formatCreatedAt, workflowStageLabel } from '@/task/format'
 const page = ref(0)
-const status = ref<TaskStatus | ''>('')
 const timeOrder = ref<TaskTimeOrder>('newest')
 const searchInput = ref('')
 const query = ref('')
@@ -28,10 +19,10 @@ async function loadTasks() {
   result.value = null
 
   try {
-    const response = await listTasks(page.value, status.value || undefined, query.value, timeOrder.value)
+    const response = await listTasks(page.value, undefined, query.value, timeOrder.value)
     if (version === requestVersion) result.value = response
   } catch (cause) {
-    if (version === requestVersion) error.value = cause instanceof Error ? cause.message : '加载任务失败。'
+    if (version === requestVersion) error.value = cause instanceof Error ? cause.message : '加载需求失败。'
   } finally {
     if (version === requestVersion) loading.value = false
   }
@@ -47,16 +38,6 @@ function applySearch() {
   void loadTasks()
 }
 
-function selectStatus(next: TaskStatus | '') {
-  if (status.value === next) return
-  status.value = next
-  query.value = searchInput.value.trim()
-  if (searchTimer !== undefined) clearTimeout(searchTimer)
-  searchTimer = undefined
-  page.value = 0
-  void loadTasks()
-}
-
 function changeTimeOrder() {
   page.value = 0
   void loadTasks()
@@ -65,7 +46,6 @@ function changeTimeOrder() {
 function clearFilters() {
   searchInput.value = ''
   query.value = ''
-  status.value = ''
   page.value = 0
   if (searchTimer !== undefined) clearTimeout(searchTimer)
   searchTimer = undefined
@@ -98,20 +78,13 @@ onUnmounted(() => {
     <div>
       <p class="eyebrow">工作空间 / 需求单</p>
       <h1>需求列表</h1>
-      <p class="page-description">从原始材料开始，跟进每份宣传需求的讨论、创作和发布。</p>
+      <p class="page-description">找到一份需求，继续补充材料或进入工作台创作。</p>
     </div>
     <RouterLink class="button" to="/tasks/new">新建需求</RouterLink>
   </section>
 
   <section class="panel" aria-label="需求列表">
     <div class="task-filters">
-      <div class="task-filters__statuses" role="group" aria-label="按 AI 执行状态筛选任务">
-        <button v-for="option in statuses" :key="option.value" type="button" class="task-filters__status"
-          :class="{ 'task-filters__status--active': status === option.value }"
-          :aria-pressed="status === option.value" @click="selectStatus(option.value)">
-          {{ option.label }}
-        </button>
-      </div>
       <div class="task-filters__controls">
         <form class="task-filters__search" role="search" @submit.prevent="applySearch">
           <label for="task-title-search">查找需求</label>
@@ -128,15 +101,15 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
-    <div v-if="loading" class="message" role="status">正在加载任务…</div>
+    <div v-if="loading" class="message" role="status">正在加载需求…</div>
     <div v-else-if="error" class="message message--error" role="alert">
       <p>{{ error }}</p>
       <button class="button button--secondary" type="button" @click="loadTasks">重试</button>
     </div>
     <div v-else-if="result && result.content.length === 0" class="message message--empty">
-      <template v-if="status || query">
-        <h2>没有找到匹配的任务</h2>
-        <p>试试缩短任务名，或切换任务状态。</p>
+      <template v-if="query">
+        <h2>没有找到匹配的需求</h2>
+        <p>试试缩短需求名称。</p>
         <button class="button button--secondary" type="button" @click="clearFilters">清除筛选</button>
       </template>
       <template v-else>
@@ -152,7 +125,6 @@ onUnmounted(() => {
             <tr>
               <th scope="col">需求</th>
               <th scope="col">当前阶段</th>
-              <th scope="col">AI 执行</th>
               <th scope="col">创建时间</th>
             </tr>
           </thead>
@@ -165,7 +137,6 @@ onUnmounted(() => {
                 <span class="task-id">#{{ task.id }}</span>
               </td>
               <td><span class="status-badge">{{ workflowStageLabel(task.workflowStage) }}</span></td>
-              <td>{{ statusLabel(task.status) }}</td>
               <td>
                 <time :datetime="task.createdAt">{{ formatCreatedAt(task.createdAt) }}</time>
               </td>
@@ -174,7 +145,7 @@ onUnmounted(() => {
         </table>
       </div>
       <div class="pagination">
-        <span>共 {{ result.totalElements }} 个任务 · 第 {{ page + 1 }} / {{ result.totalPages }} 页</span>
+        <span>共 {{ result.totalElements }} 份需求 · 第 {{ page + 1 }} / {{ result.totalPages }} 页</span>
         <div class="pagination__buttons">
           <button class="button button--secondary button--small" type="button" :disabled="page === 0" @click="changePage(page - 1)">
             上一页
