@@ -13,6 +13,8 @@ import { loadPosterTransfer, removePosterTransfer } from '@/poster/transfer'
 const maxImageBytes = 20_000_000
 const supportedTypes = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
 const publishUrl = 'https://creator.douyin.com/'
+const appSource = 'staranaly-douyin-app'
+const extensionSource = 'staranaly-douyin-extension'
 const route = useRoute()
 const router = useRouter()
 const isRecordsPage = computed(() => route.name === 'share-douyin-records')
@@ -29,7 +31,9 @@ const generating = ref(false)
 const error = ref('')
 const copyStatus = ref('')
 const publishStatus = ref('')
+const extensionReady = ref(false)
 const preparingPublish = ref(false)
+const pendingRequestId = ref('')
 const currentNote = ref<DouyinNote | null>(null)
 const imageChanged = ref(false)
 const savedNotes = ref<DouyinNote[]>([])
@@ -59,6 +63,7 @@ const loadingNote = ref(false)
 const saving = ref(false)
 const libraryError = ref('')
 const saveStatus = ref('')
+let publishTimeout = 0
 
 const allImages = computed(() => image.value ? [image.value, ...extraImages.value] : [])
 const imageSize = computed(() => image.value ? `${(image.value.size / 1_000_000).toFixed(1)} MB` : '')
@@ -545,6 +550,77 @@ function bodyWithTags() {
   return [draft.value?.body.trim(), tagsText.value.trim()].filter(Boolean).join('\n\n')
 }
 
+function handleExtensionMessage(event: MessageEvent) {
+  if (event.source !== window || event.origin !== location.origin) return
+  const message = event.data
+  if (!message || message.source !== extensionSource) return
+  if (message.kind === 'READY') {
+    extensionReady.value = true
+    return
+  }
+  if (message.kind !== 'PREPARED' || message.requestId !== pendingRequestId.value) return
+  window.clearTimeout(publishTimeout)
+  pendingRequestId.value = ''
+  preparingPublish.value = false
+  publishStatus.value = message.ok
+    ? '扩展已打开抖音图文页，正在填入图片和文案。请到新标签页检查。'
+    : (typeof message.error === 'string' ? message.error : '扩展未能打开抖音图文页，请重试。')
+}
+
+function readImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => typeof reader.result === 'string'
+      ? resolve(reader.result)
+      : reject(new Error('无法读取图片。'))
+    reader.onerror = () => reject(new Error('无法读取图片。'))
+    reader.readAsDataURL(file)
+  })
+}
+
+async function publishWithExtension() {
+  if (!draft.value || !image.value || preparingPublish.value || saving.value || generating.value) return
+  publishStatus.value = ''
+  if (allImages.value.some((file) => file.type === 'image/gif')) {
+    publishStatus.value = '抖音图文自动填入仅支持 JPEG、PNG、WebP 图片。请更换 GIF 图片后重试。'
+    return
+  }
+  if (!draft.value.title.trim() || Array.from(draft.value.title.trim()).length > 20
+      || !bodyWithTags() || Array.from(bodyWithTags()).length > 1000) {
+    publishStatus.value = '请检查标题为 1 至 20 字，正文与话题合计不超过 1000 字。'
+    return
+  }
+  preparingPublish.value = true
+  try {
+    const note = !currentNote.value || isDirty.value ? await saveNote() : currentNote.value
+    if (!note) {
+      publishStatus.value = '请先修正文案保存失败的问题，再去发布。'
+      return
+    }
+    const requestId = crypto.randomUUID()
+    const payload = {
+      noteId: note.id,
+      title: draft.value.title.trim(),
+      body: bodyWithTags(),
+      images: await Promise.all(allImages.value.map(async (file) => ({
+        name: file.name, type: file.type, data: await readImage(file),
+      }))),
+    }
+    pendingRequestId.value = requestId
+    window.postMessage({ source: appSource, kind: 'PREPARE', requestId, draft: payload }, location.origin)
+    publishTimeout = window.setTimeout(() => {
+      if (pendingRequestId.value !== requestId) return
+      pendingRequestId.value = ''
+      preparingPublish.value = false
+      publishStatus.value = '扩展没有及时响应，请在扩展管理页重新加载星析发布助手后重试。'
+    }, 45000)
+  } catch (cause) {
+    publishStatus.value = cause instanceof Error ? cause.message : '无法把图片交给扩展。'
+  } finally {
+    if (!pendingRequestId.value) preparingPublish.value = false
+  }
+}
+
 async function shareViaDevice() {
   if (!draft.value || !image.value) return
   publishStatus.value = ''
@@ -577,6 +653,8 @@ function prepareWebPublish() {
 }
 
 onMounted(() => {
+  window.addEventListener('message', handleExtensionMessage)
+  window.postMessage({ source: appSource, kind: 'PING' }, location.origin)
   void refreshNotes()
   void refreshMaterials()
 })
@@ -587,6 +665,8 @@ watch(() => [route.query.taskId, route.query.direction, route.query.noteId, rout
 
 onUnmounted(() => {
   routeContextVersion++
+  window.removeEventListener('message', handleExtensionMessage)
+  window.clearTimeout(publishTimeout)
   clearImage()
 })
 </script>
@@ -718,10 +798,12 @@ onUnmounted(() => {
           <button v-if="currentNote && !isPublished" class="button button--quiet" type="button" :disabled="saving || generating || preparingPublish" @click="saveAsNewVersion">另存为新版本</button>
           <button class="button button--quiet" type="button" @click="copyTitle">复制标题</button>
           <button class="button button--quiet" type="button" @click="copyBody">复制正文与话题</button>
-          <button v-if="!isPublished && canShareImage" class="button" type="button" :disabled="saving" @click="shareViaDevice">去发布（系统分享）</button>
+          <button v-if="!isPublished && extensionReady" class="button" type="button" :disabled="preparingPublish || saving"
+            @click="publishWithExtension">{{ preparingPublish ? '正在交给扩展…' : '去发布（自动填入）' }}</button>
+          <button v-else-if="!isPublished && canShareImage" class="button" type="button" :disabled="saving" @click="shareViaDevice">去发布（系统分享）</button>
           <a v-else-if="!isPublished" class="button" :href="publishUrl" target="_blank" rel="noopener noreferrer"
             @click="prepareWebPublish">复制正文并打开抖音</a>
-          <a v-if="!isPublished && canShareImage" class="text-button share-result__web-link" :href="publishUrl"
+          <a v-if="!isPublished && (extensionReady || canShareImage)" class="text-button share-result__web-link" :href="publishUrl"
             target="_blank" rel="noopener noreferrer" @click="prepareWebPublish">打开网页版</a>
           <button v-if="currentNote && !isPublished" class="button button--secondary" type="button"
             :disabled="saving || preparingPublish || isDirty" @click="markPublished">已在抖音发布</button>
@@ -731,7 +813,17 @@ onUnmounted(() => {
         <p v-if="copyStatus" class="field-hint" role="status">{{ copyStatus }}</p>
         <p v-if="publishStatus" class="field-hint" role="status">{{ publishStatus }}</p>
         <p v-if="currentNote && isDirty" class="field-hint">修改后请先保存，再去发布。</p>
-        <p v-if="!isPublished" class="field-hint">发布时请在抖音创作者中心上传原图、粘贴标题和正文，并亲自完成发布。发布成功后返回这里标记“已发布”。</p>
+        <p v-if="!isPublished" class="field-hint">{{ extensionReady
+          ? '扩展会打开抖音图文发布页并填入图片、标题、正文和话题。请核对图片上传状态和内容，再亲自点击发布；发布成功后返回这里标记“已发布”。'
+          : '发布时请在抖音创作者中心上传原图、粘贴标题和正文，并亲自完成发布。发布成功后返回这里标记“已发布”。' }}</p>
+        <details v-if="!isPublished && !extensionReady" class="share-extension-help">
+          <summary>电脑自动填入：安装或重新加载浏览器扩展</summary>
+          <ol>
+            <li>在 Chrome 或 Edge 扩展管理页开启“开发者模式”。</li>
+            <li>加载项目中的 <code>browser-extension/xiaohongshu</code> 文件夹；已安装时点击“重新加载”。</li>
+            <li>刷新星析页面，再点击“去发布（自动填入）”。</li>
+          </ol>
+        </details>
       </template>
     </section>
   </div>

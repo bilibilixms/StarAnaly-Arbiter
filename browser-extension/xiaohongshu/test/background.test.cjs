@@ -74,6 +74,7 @@ function createExtension() {
     closeApp() { appTabAvailable = false },
     leaveCreationPage() { appTabAtCreationPage = false },
     expire: () => alarmListener({ name: 'pendingXiaohongshuDraftExpiry' }),
+    expireDouyin: () => alarmListener({ name: 'pendingDouyinDraftExpiry' }),
     closeTab: (id) => removedTabListener(id),
   }
 }
@@ -88,6 +89,38 @@ const draft = {
     { name: 'second.png', type: 'image/png', data: imageData }],
 }
 const app = { url: 'http://localhost:5173/share/xiaohongshu', tab: { id: 1 } }
+const douyinApp = { url: 'http://localhost:5173/share/douyin', tab: { id: 2 } }
+
+test('hands Douyin images and copy only to the new Douyin creator tab', async () => {
+  const extension = createExtension()
+  const douyinDraft = { noteId: 7, title: '周末随拍', body: '晴天出门走走。\n\n#周末记录', images: draft.images }
+  assert.equal((await extension.send({ kind: 'DY_PREPARE', draft: douyinDraft }, douyinApp)).ok, true)
+  const opened = extension.openedTabs[0]
+  assert.equal(opened.url, 'https://creator.douyin.com/creator-micro/content/upload?default-tab=3')
+  assert.equal((await extension.send({ kind: 'DY_GET_DRAFT' }, { url: opened.url, tab: { id: 99 } })).ok, false)
+  assert.equal((await extension.send({ kind: 'DY_GET_DRAFT' }, {
+    url: opened.url.replace('creator.douyin.com', 'creator.xiaohongshu.com'), tab: { id: opened.id },
+  })).ok, false)
+  const creator = { url: opened.url, tab: { id: opened.id } }
+  assert.equal((await extension.send({ kind: 'DY_GET_DRAFT' }, creator)).draft.body, douyinDraft.body)
+  assert.equal((await extension.send({ kind: 'DY_CLEAR_DRAFT' }, creator)).ok, true)
+  assert.equal(extension.values.has('pendingDouyinDraft'), false)
+  assert.equal(extension.values.has('pendingXiaohongshuDraft'), false)
+})
+
+test('rejects invalid Douyin handoffs and clears temporary content on close or expiry', async () => {
+  const extension = createExtension()
+  const douyinDraft = { noteId: 7, title: '周末随拍', body: '正文', images: draft.images }
+  assert.equal((await extension.send({ kind: 'DY_PREPARE', draft: douyinDraft }, app)).ok, false)
+  assert.equal((await extension.send({ kind: 'DY_PREPARE', draft: { ...douyinDraft, images: [] } }, douyinApp)).ok, false)
+  assert.equal((await extension.send({ kind: 'DY_PREPARE', draft: douyinDraft }, douyinApp)).ok, true)
+  assert.equal(extension.values.has('pendingDouyinDraft'), true)
+  await extension.closeTab(extension.openedTabs[0].id)
+  assert.equal(extension.values.has('pendingDouyinDraft'), false)
+  assert.equal((await extension.send({ kind: 'DY_PREPARE', draft: douyinDraft }, douyinApp)).ok, true)
+  extension.expireDouyin()
+  assert.equal(extension.values.has('pendingDouyinDraft'), false)
+})
 
 test('hands the image and text only to the newly opened creator tab', async () => {
   const extension = createExtension()

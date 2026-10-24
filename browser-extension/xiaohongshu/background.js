@@ -3,6 +3,9 @@ const PUBLICATIONS_KEY = 'xiaohongshuPublications'
 const COMPLETED_KEY = 'completedXiaohongshuPublications'
 const PUBLISH_URL = 'https://creator.xiaohongshu.com/publish/publish?target=image'
 const EXPIRY_ALARM = 'pendingXiaohongshuDraftExpiry'
+const DOUYIN_DRAFT_KEY = 'pendingDouyinDraft'
+const DOUYIN_EXPIRY_ALARM = 'pendingDouyinDraftExpiry'
+const DOUYIN_PUBLISH_URL = 'https://creator.douyin.com/creator-micro/content/upload?default-tab=3'
 const MAX_AGE_MS = 30 * 60 * 1000
 const MAX_IMAGE_BYTES = 20_000_000
 const MAX_PUBLICATION_AGE_MS = 24 * 60 * 60 * 1000
@@ -23,6 +26,26 @@ function isAppSender(sender) {
 function isCreatorSender(sender) {
   try {
     return new URL(sender.url).hostname === 'creator.xiaohongshu.com'
+      && sender.tab?.id != null
+  } catch {
+    return false
+  }
+}
+
+function isDouyinAppSender(sender) {
+  try {
+    const url = new URL(sender.url)
+    return (url.hostname === 'localhost' || url.hostname === '127.0.0.1')
+      && url.pathname.replace(/\/$/, '') === '/share/douyin'
+      && sender.tab?.id != null
+  } catch {
+    return false
+  }
+}
+
+function isDouyinCreatorSender(sender) {
+  try {
+    return new URL(sender.url).hostname === 'creator.douyin.com'
       && sender.tab?.id != null
   } catch {
     return false
@@ -51,6 +74,49 @@ function validateDraft(draft) {
     const padding = image.data.endsWith('==') ? 2 : image.data.endsWith('=') ? 1 : 0
     return encodedLength / 4 * 3 - padding <= MAX_IMAGE_BYTES
   })
+}
+
+async function prepareDouyinDraft(draft, sender) {
+  if (!isDouyinAppSender(sender) || !validateDraft({ ...draft, topics: [] })) {
+    return { ok: false, error: '图片或文案无效，请返回星析重新选择。' }
+  }
+  const tab = await chrome.tabs.create({ url: 'about:blank', active: true })
+  if (tab.id == null) return { ok: false, error: '无法打开抖音标签页。' }
+  try {
+    await chrome.storage.local.set({
+      [DOUYIN_DRAFT_KEY]: { ...draft, targetTabId: tab.id, createdAt: Date.now() },
+    })
+    await chrome.alarms.create(DOUYIN_EXPIRY_ALARM, { delayInMinutes: 30 })
+    await chrome.tabs.update(tab.id, { url: DOUYIN_PUBLISH_URL })
+    return { ok: true }
+  } catch (error) {
+    await chrome.storage.local.remove(DOUYIN_DRAFT_KEY)
+    await chrome.alarms.clear(DOUYIN_EXPIRY_ALARM)
+    await chrome.tabs.remove(tab.id).catch(() => {})
+    return { ok: false, error: error instanceof Error ? error.message : '无法打开抖音图文发布页。' }
+  }
+}
+
+async function getDouyinDraft(sender) {
+  if (!isDouyinCreatorSender(sender)) return { ok: false }
+  const stored = await chrome.storage.local.get(DOUYIN_DRAFT_KEY)
+  const draft = stored[DOUYIN_DRAFT_KEY]
+  if (!draft || draft.targetTabId !== sender.tab.id) return { ok: false }
+  if (Date.now() - draft.createdAt > MAX_AGE_MS) {
+    await chrome.storage.local.remove(DOUYIN_DRAFT_KEY)
+    await chrome.alarms.clear(DOUYIN_EXPIRY_ALARM)
+    return { ok: false, error: '待发布内容已过期，请返回星析重新打开。' }
+  }
+  return { ok: true, draft }
+}
+
+async function clearDouyinDraft(sender) {
+  if (!isDouyinCreatorSender(sender)) return { ok: false }
+  const stored = await chrome.storage.local.get(DOUYIN_DRAFT_KEY)
+  if (stored[DOUYIN_DRAFT_KEY]?.targetTabId !== sender.tab.id) return { ok: false }
+  await chrome.storage.local.remove(DOUYIN_DRAFT_KEY)
+  await chrome.alarms.clear(DOUYIN_EXPIRY_ALARM)
+  return { ok: true }
 }
 
 async function prepareDraft(draft, sender) {
@@ -210,6 +276,7 @@ async function clearDraft(sender) {
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === EXPIRY_ALARM) void chrome.storage.local.remove(DRAFT_KEY)
+  if (alarm.name === DOUYIN_EXPIRY_ALARM) void chrome.storage.local.remove(DOUYIN_DRAFT_KEY)
 })
 
 chrome.tabs.onRemoved.addListener(async (tabId) => {
@@ -217,6 +284,11 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
   if (stored[DRAFT_KEY]?.targetTabId === tabId) {
     await chrome.storage.local.remove(DRAFT_KEY)
     await chrome.alarms.clear(EXPIRY_ALARM)
+  }
+  const douyinStored = await chrome.storage.local.get(DOUYIN_DRAFT_KEY)
+  if (douyinStored[DOUYIN_DRAFT_KEY]?.targetTabId === tabId) {
+    await chrome.storage.local.remove(DOUYIN_DRAFT_KEY)
+    await chrome.alarms.clear(DOUYIN_EXPIRY_ALARM)
   }
   await removePublication(tabId)
 })
@@ -231,6 +303,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   else if (message?.kind === 'PUBLISH_SUCCEEDED') action = publishSucceeded(sender, message.signal)
   else if (message?.kind === 'GET_COMPLETED') action = getCompleted(sender)
   else if (message?.kind === 'ACK_COMPLETED') action = acknowledgeCompleted(message.id, sender)
+  else if (message?.kind === 'DY_PREPARE') action = prepareDouyinDraft(message.draft, sender)
+  else if (message?.kind === 'DY_GET_DRAFT') action = getDouyinDraft(sender)
+  else if (message?.kind === 'DY_CLEAR_DRAFT') action = clearDouyinDraft(sender)
   else return false
 
   action.then(sendResponse).catch((error) => {
