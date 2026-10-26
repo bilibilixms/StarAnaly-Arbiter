@@ -44,8 +44,8 @@ bash scripts/local.sh down     # 停止服务，保留数据库和依赖缓存
 | `MODEL_API_KEY` | 模型服务密钥；设置后优先使用 |
 | `DEEPSEEK_API_KEY` | DeepSeek 密钥；未设置 `MODEL_API_KEY` 时使用 |
 | `MODEL_BASE_URL` | 模型 API 基础地址，默认 `https://api.deepseek.com` |
-| `POSTER_API_KEY` | 千问AI平台图像模型密钥，仅存本机 `.env` |
-| `POSTER_API_BASE_URL` | 千问AI平台多模态接口基础地址，北京地域为 `https://cn-beijing.maas.qianwenaiapi.com/api/v1` |
+| `POSTER_API_KEY` | 阿里云百炼图像模型 API Key，仅存本机 `.env` |
+| `POSTER_API_BASE_URL` | DashScope 接口基础地址；北京地域为 `https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/api/v1`，需替换业务空间 ID，并与 API Key 地域一致 |
 | `POSTER_MODEL` | 图像模型，默认 `qwen-image-3.0-pro` |
 
 如果密码已配置在机器的环境变量中，无需创建 `.env`。本地开发也可复制 `.env.example` 为 `.env` 并填写密码；该文件已被 Git 忽略。两者同时存在时，环境变量优先。

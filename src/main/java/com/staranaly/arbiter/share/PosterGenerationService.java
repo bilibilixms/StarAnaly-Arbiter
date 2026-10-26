@@ -113,14 +113,13 @@ public class PosterGenerationService {
                 throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
                         "千问图像接口返回 " + response.statusCode() + "，请核对地域、模型和密钥。");
             }
-            JsonNode data = mapper.readTree(response.body()).path("output").path("choices").path(0)
-                    .path("message").path("content");
-            if (!data.isArray() || data.size() != count) {
+            List<String> imageUrls = imageUrls(mapper.readTree(response.body()));
+            if (imageUrls.size() != count) {
                 throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "图像服务返回的图片数量不正确。");
             }
             List<GeneratedPoster> posters = new ArrayList<>();
-            for (int i = 0; i < data.size(); i++) {
-                URI imageUri = URI.create(data.get(i).path("image").asText());
+            for (int i = 0; i < imageUrls.size(); i++) {
+                URI imageUri = URI.create(imageUrls.get(i));
                 String host = imageUri.getHost();
                 if (!"https".equals(imageUri.getScheme()) || host == null
                         || !(host.equals("aliyuncs.com") || host.endsWith(".aliyuncs.com"))) {
@@ -143,6 +142,21 @@ public class PosterGenerationService {
             if (exception instanceof InterruptedException) Thread.currentThread().interrupt();
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "无法连接千问图像服务，请检查接口地址和网络。");
         }
+    }
+
+    static List<String> imageUrls(JsonNode response) {
+        List<String> urls = new ArrayList<>();
+        JsonNode choices = response.path("output").path("choices");
+        if (!choices.isArray()) return urls;
+        for (JsonNode choice : choices) {
+            JsonNode content = choice.path("message").path("content");
+            if (!content.isArray()) continue;
+            for (JsonNode item : content) {
+                String url = item.path("image").asText();
+                if (!url.isBlank()) urls.add(url);
+            }
+        }
+        return urls;
     }
 
     private static String safe(String value) { return value == null ? "" : value.strip(); }
