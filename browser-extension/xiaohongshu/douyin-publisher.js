@@ -1,5 +1,6 @@
 (() => {
   const publishPath = '/creator-micro/content/upload'
+  const { fillTopics } = globalThis.douyinTopicFill
   let running = false
   let finished = false
   let waitingForPage = false
@@ -15,6 +16,7 @@
   function showStatus(message, canRetry = false) {
     if (!panel) {
       panel = document.createElement('aside')
+      panel.id = 'staranaly-douyin-status'
       panel.setAttribute('aria-live', 'polite')
       panel.style.cssText = 'position:fixed;top:20px;right:20px;z-index:2147483647;width:min(330px,calc(100vw - 40px));padding:16px;border:1px solid #a9d5dc;border-radius:14px;background:#f4fbfc;box-shadow:0 12px 35px #24314833;color:#243148;font:14px/1.5 system-ui,sans-serif;'
       const heading = document.createElement('strong')
@@ -113,8 +115,13 @@
   }
 
   function matchesEditor(editor, content) {
-    const normalize = (value) => (value || '').replace(/[\s\u200b]+/g, ' ').trim()
-    return normalize(editor.innerText || editor.textContent) === normalize(content)
+    const normalize = (value) => (value || '').replace(/[\s\u200b-\u200f\ufeff]+/g, ' ').trim()
+    const expected = normalize(content)
+    const lines = [...(editor.querySelectorAll?.('[data-line-wrapper="true"]') || [])]
+    const actual = lines.length
+      ? normalize(lines.map((line) => line.innerText || line.textContent).join(' '))
+      : normalize(editor.innerText || editor.textContent)
+    return actual.includes(expected)
   }
 
   async function fillEditor(editor, content) {
@@ -138,14 +145,13 @@
       }))
       await new Promise((resolve) => setTimeout(resolve, 350))
     }
-    if (!matchesEditor(editor, content)) {
-      throw new Error('正文与话题没有完整填入。请重试，或从星析复制后手动粘贴。')
-    }
+    return matchesEditor(editor, content)
   }
 
   async function run() {
     if (running || finished) return
     running = true
+    let fillingTopics = false
     try {
       const response = await chrome.runtime.sendMessage({ kind: 'DY_GET_DRAFT' })
       if (!response?.ok) {
@@ -160,22 +166,29 @@
         return
       }
       waitingForPage = false
-      showStatus('正在上传图片并填写标题、正文和话题。')
+      showStatus('正在上传图片、填写文案并选择抖音话题。')
       if (!uploadTriggered) await uploadImages(draft)
       const titleInput = await waitFor(findTitleInput, 60000,
         '没有找到抖音标题输入框。请确认图片已上传，或点击“重试填入”。')
       const editor = await waitFor(findEditor, 15000,
         '没有找到抖音正文编辑框。请检查发布页，或点击“重试填入”。')
       await fillTitle(titleInput, draft.title)
-      await fillEditor(editor, draft.body)
+      const bodyFilled = await fillEditor(editor, draft.body)
+      if (!bodyFilled) throw new Error('抖音正文没有完整填入，请检查发布页后重试。')
+      if (draft.topicTags?.length) {
+        fillingTopics = true
+        await fillTopics(editor, draft.topicTags, (tag, index, count) => {
+          showStatus(`正在选择话题 ${index + 1}/${count}：${tag}`)
+        }, findEditor)
+      }
       const cleared = await chrome.runtime.sendMessage({ kind: 'DY_CLEAR_DRAFT' })
       if (!cleared?.ok) throw new Error('扩展未能清除临时图片，请重试填入。')
       draft.images = []
       finished = true
-      showStatus('图片已交给抖音上传控件，标题、正文和话题已填入。请检查图片数量、上传状态和文案，再由你点击发布。')
+      showStatus('图片和文案已填入，话题已从抖音候选中选择。请检查图片数量、上传状态及话题，再由你点击发布。')
     } catch (error) {
       waitingForPage = false
-      showStatus(error instanceof Error ? error.message : '自动填入失败，请检查页面后重试。', true)
+      showStatus(error instanceof Error ? error.message : '自动填入失败，请检查页面后重试。', !fillingTopics)
     } finally {
       running = false
     }

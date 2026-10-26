@@ -32,6 +32,7 @@ const error = ref('')
 const copyStatus = ref('')
 const publishStatus = ref('')
 const extensionReady = ref(false)
+const extensionVersion = ref('')
 const preparingPublish = ref(false)
 const pendingRequestId = ref('')
 const currentNote = ref<DouyinNote | null>(null)
@@ -68,6 +69,12 @@ let publishTimeout = 0
 const allImages = computed(() => image.value ? [image.value, ...extraImages.value] : [])
 const imageSize = computed(() => image.value ? `${(image.value.size / 1_000_000).toFixed(1)} MB` : '')
 const isPublished = computed(() => currentNote.value?.status === 'PUBLISHED')
+const publishExtensionReady = computed(() => {
+  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(extensionVersion.value)
+  if (!match) return false
+  const [major, minor, patch] = match.slice(1).map(Number)
+  return major > 0 || minor > 8 || (minor === 8 && patch >= 14)
+})
 const isDirty = computed(() => {
   const note = currentNote.value
   if (!note || !draft.value) return false
@@ -550,12 +557,23 @@ function bodyWithTags() {
   return [draft.value?.body.trim(), tagsText.value.trim()].filter(Boolean).join('\n\n')
 }
 
+function publishTopicTags(): string[] | null {
+  const text = tagsText.value.trim()
+  if (!text) return []
+  const entries = text.split(/\s+/u)
+  if (entries.length > 10 || entries.some((entry) => !/^#[^#\s]+$/u.test(entry))
+      || entries.some((entry) => Array.from(entry.slice(1)).length > 30)
+      || new Set(entries).size !== entries.length) return null
+  return entries
+}
+
 function handleExtensionMessage(event: MessageEvent) {
   if (event.source !== window || event.origin !== location.origin) return
   const message = event.data
   if (!message || message.source !== extensionSource) return
   if (message.kind === 'READY') {
     extensionReady.value = true
+    extensionVersion.value = typeof message.extensionVersion === 'string' ? message.extensionVersion : ''
     return
   }
   if (message.kind !== 'PREPARED' || message.requestId !== pendingRequestId.value) return
@@ -579,8 +597,13 @@ function readImage(file: File): Promise<string> {
 }
 
 async function publishWithExtension() {
-  if (!draft.value || !image.value || preparingPublish.value || saving.value || generating.value) return
+  if (!publishExtensionReady.value || !draft.value || !image.value || preparingPublish.value || saving.value || generating.value) return
   publishStatus.value = ''
+  const topicTags = publishTopicTags()
+  if (!topicTags) {
+    publishStatus.value = '话题请用空格分隔，格式为 #话题名；最多 10 个，不要重复。'
+    return
+  }
   if (allImages.value.some((file) => file.type === 'image/gif')) {
     publishStatus.value = '抖音图文自动填入仅支持 JPEG、PNG、WebP 图片。请更换 GIF 图片后重试。'
     return
@@ -601,7 +624,8 @@ async function publishWithExtension() {
     const payload = {
       noteId: note.id,
       title: draft.value.title.trim(),
-      body: bodyWithTags(),
+      body: draft.value.body.trim(),
+      topicTags,
       images: await Promise.all(allImages.value.map(async (file) => ({
         name: file.name, type: file.type, data: await readImage(file),
       }))),
@@ -798,8 +822,9 @@ onUnmounted(() => {
           <button v-if="currentNote && !isPublished" class="button button--quiet" type="button" :disabled="saving || generating || preparingPublish" @click="saveAsNewVersion">另存为新版本</button>
           <button class="button button--quiet" type="button" @click="copyTitle">复制标题</button>
           <button class="button button--quiet" type="button" @click="copyBody">复制正文与话题</button>
-          <button v-if="!isPublished && extensionReady" class="button" type="button" :disabled="preparingPublish || saving"
+          <button v-if="!isPublished && publishExtensionReady" class="button" type="button" :disabled="preparingPublish || saving"
             @click="publishWithExtension">{{ preparingPublish ? '正在交给扩展…' : '去发布（自动填入）' }}</button>
+          <button v-else-if="!isPublished && extensionReady" class="button" type="button" disabled>重新加载扩展后自动填入</button>
           <button v-else-if="!isPublished && canShareImage" class="button" type="button" :disabled="saving" @click="shareViaDevice">去发布（系统分享）</button>
           <a v-else-if="!isPublished" class="button" :href="publishUrl" target="_blank" rel="noopener noreferrer"
             @click="prepareWebPublish">复制正文并打开抖音</a>
@@ -813,10 +838,12 @@ onUnmounted(() => {
         <p v-if="copyStatus" class="field-hint" role="status">{{ copyStatus }}</p>
         <p v-if="publishStatus" class="field-hint" role="status">{{ publishStatus }}</p>
         <p v-if="currentNote && isDirty" class="field-hint">修改后请先保存，再去发布。</p>
-        <p v-if="!isPublished" class="field-hint">{{ extensionReady
-          ? '扩展会打开抖音图文发布页并填入图片、标题、正文和话题。请核对图片上传状态和内容，再亲自点击发布；发布成功后返回这里标记“已发布”。'
-          : '发布时请在抖音创作者中心上传原图、粘贴标题和正文，并亲自完成发布。发布成功后返回这里标记“已发布”。' }}</p>
-        <details v-if="!isPublished && !extensionReady" class="share-extension-help">
+        <p v-if="!isPublished" class="field-hint">{{ publishExtensionReady
+          ? '扩展会打开抖音图文发布页并填入图片、标题、正文，逐个选择有效话题。请核对图片上传状态和内容，再亲自点击发布；发布成功后返回这里标记“已发布”。'
+          : extensionReady
+            ? '当前扩展版本不支持有效话题选择。请重新加载扩展，再刷新星析页面。'
+            : '发布时请在抖音创作者中心上传原图、粘贴标题和正文，并亲自完成发布。发布成功后返回这里标记“已发布”。' }}</p>
+        <details v-if="!isPublished && !publishExtensionReady" class="share-extension-help">
           <summary>电脑自动填入：安装或重新加载浏览器扩展</summary>
           <ol>
             <li>在 Chrome 或 Edge 扩展管理页开启“开发者模式”。</li>

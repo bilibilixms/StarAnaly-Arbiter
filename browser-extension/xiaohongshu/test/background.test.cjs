@@ -93,7 +93,7 @@ const douyinApp = { url: 'http://localhost:5173/share/douyin', tab: { id: 2 } }
 
 test('hands Douyin images and copy only to the new Douyin creator tab', async () => {
   const extension = createExtension()
-  const douyinDraft = { noteId: 7, title: '周末随拍', body: '晴天出门走走。\n\n#周末记录', images: draft.images }
+  const douyinDraft = { noteId: 7, title: '周末随拍', body: '晴天出门走走。', topicTags: ['#周末记录', '#散步日记'], images: draft.images }
   assert.equal((await extension.send({ kind: 'DY_PREPARE', draft: douyinDraft }, douyinApp)).ok, true)
   const opened = extension.openedTabs[0]
   assert.equal(opened.url, 'https://creator.douyin.com/creator-micro/content/upload?default-tab=3')
@@ -103,6 +103,7 @@ test('hands Douyin images and copy only to the new Douyin creator tab', async ()
   })).ok, false)
   const creator = { url: opened.url, tab: { id: opened.id } }
   assert.equal((await extension.send({ kind: 'DY_GET_DRAFT' }, creator)).draft.body, douyinDraft.body)
+  assert.deepEqual((await extension.send({ kind: 'DY_GET_DRAFT' }, creator)).draft.topicTags, ['#周末记录', '#散步日记'])
   assert.equal((await extension.send({ kind: 'DY_CLEAR_DRAFT' }, creator)).ok, true)
   assert.equal(extension.values.has('pendingDouyinDraft'), false)
   assert.equal(extension.values.has('pendingXiaohongshuDraft'), false)
@@ -110,9 +111,11 @@ test('hands Douyin images and copy only to the new Douyin creator tab', async ()
 
 test('rejects invalid Douyin handoffs and clears temporary content on close or expiry', async () => {
   const extension = createExtension()
-  const douyinDraft = { noteId: 7, title: '周末随拍', body: '正文', images: draft.images }
+  const douyinDraft = { noteId: 7, title: '周末随拍', body: '正文', topicTags: [], images: draft.images }
   assert.equal((await extension.send({ kind: 'DY_PREPARE', draft: douyinDraft }, app)).ok, false)
   assert.equal((await extension.send({ kind: 'DY_PREPARE', draft: { ...douyinDraft, images: [] } }, douyinApp)).ok, false)
+  assert.equal((await extension.send({ kind: 'DY_PREPARE', draft: { ...douyinDraft, topicTags: ['无效'] } }, douyinApp)).ok, false)
+  assert.equal((await extension.send({ kind: 'DY_PREPARE', draft: { ...douyinDraft, topicTags: ['#重复', '#重复'] } }, douyinApp)).ok, false)
   assert.equal((await extension.send({ kind: 'DY_PREPARE', draft: douyinDraft }, douyinApp)).ok, true)
   assert.equal(extension.values.has('pendingDouyinDraft'), true)
   await extension.closeTab(extension.openedTabs[0].id)

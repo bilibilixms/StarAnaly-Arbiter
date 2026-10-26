@@ -52,12 +52,12 @@ function isDouyinCreatorSender(sender) {
   }
 }
 
-function validateDraft(draft) {
+function validateDraft(draft, maxTopics = 8) {
   if (!draft || typeof draft !== 'object') return false
   if (!Number.isSafeInteger(draft.noteId) || draft.noteId <= 0) return false
   if (typeof draft.title !== 'string' || !draft.title.trim() || Array.from(draft.title.trim()).length > 20) return false
   if (typeof draft.body !== 'string' || !draft.body.trim() || Array.from(draft.body.trim()).length > 1000) return false
-  if (!Array.isArray(draft.topics) || draft.topics.length > 8) return false
+  if (!Array.isArray(draft.topics) || draft.topics.length > maxTopics) return false
   if (draft.topics.some((name) => typeof name !== 'string' || !name.trim()
       || name !== name.trim() || /[\s#]/u.test(name) || Array.from(name).length > 30)) return false
   if (new Set(draft.topics).size !== draft.topics.length) return false
@@ -76,8 +76,17 @@ function validateDraft(draft) {
   })
 }
 
+function validateDouyinDraft(draft) {
+  const tags = draft?.topicTags
+  if (!Array.isArray(tags) || tags.length > 10
+      || tags.some((tag) => typeof tag !== 'string' || !/^#[^#\s]+$/u.test(tag)
+        || Array.from(tag.slice(1)).length > 30)
+      || new Set(tags).size !== tags.length) return false
+  return validateDraft({ ...draft, topics: tags.map((tag) => tag.slice(1)) }, 10)
+}
+
 async function prepareDouyinDraft(draft, sender) {
-  if (!isDouyinAppSender(sender) || !validateDraft({ ...draft, topics: [] })) {
+  if (!isDouyinAppSender(sender) || !validateDouyinDraft(draft)) {
     return { ok: false, error: '图片或文案无效，请返回星析重新选择。' }
   }
   const tab = await chrome.tabs.create({ url: 'about:blank', active: true })

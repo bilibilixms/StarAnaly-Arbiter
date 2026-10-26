@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "星析 · 图文发布助手",
-  "version": "0.7.0",
+  "version": "0.8.14",
   "description": "填入小红书与抖音图文内容；小红书发布成功后同步状态并返回星析。",
   "permissions": ["storage", "unlimitedStorage", "alarms"],
   "background": {
@@ -20,7 +20,7 @@
     },
     {
       "matches": ["https://creator.douyin.com/*"],
-      "js": ["douyin-publisher.js"],
+      "js": ["douyin-topic-fill.js", "douyin-publisher.js"],
       "run_at": "document_idle"
     }
   ]

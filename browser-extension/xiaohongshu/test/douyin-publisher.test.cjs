@@ -6,6 +6,7 @@ const vm = require('node:vm')
 
 test('Douyin publisher fills images and copy, then waits for the user to publish', async () => {
   let clicks = 0
+  const selectedTopics = []
   class Element {
     constructor() { this.textContent = ''; this.innerText = ''; this.children = []; this.style = {} }
     getClientRects() { return [1] }
@@ -48,7 +49,7 @@ test('Douyin publisher fills images and copy, then waits for the user to publish
     createRange() { return { selectNodeContents() {} } },
     execCommand(command, _show, content) {
       assert.equal(command, 'insertText')
-      editor.innerText = content
+      editor.innerText = `${content}\n#添加话题 @好友`
       return true
     },
   }
@@ -58,7 +59,7 @@ test('Douyin publisher fills images and copy, then waits for the user to publish
       async sendMessage(message) {
         messages.push(message.kind)
         if (message.kind === 'DY_GET_DRAFT') return { ok: true, draft: {
-          noteId: 1, title: '抖音标题', body: '正文内容\n\n#话题',
+          noteId: 1, title: '抖音标题', body: '正文内容', topicTags: ['#话题'],
           images: [{ name: 'image.png', type: 'image/png', data: 'data:image/png;base64,AA==' }],
         } }
         return { ok: true }
@@ -67,6 +68,10 @@ test('Douyin publisher fills images and copy, then waits for the user to publish
   }
   const source = fs.readFileSync(path.join(__dirname, '..', 'douyin-publisher.js'), 'utf8')
   vm.runInNewContext(source, {
+    globalThis: { douyinTopicFill: { async fillTopics(_editor, topicTags, _onProgress, getEditor) {
+      assert.equal(getEditor(), editor)
+      selectedTopics.push(...topicTags)
+    } } },
     chrome, document, location: { pathname: '/creator-micro/content/upload' },
     window: { getSelection() { return { removeAllRanges() {}, addRange() {} } } },
     HTMLElement: Element, HTMLInputElement: Input, DataTransfer: Transfer, File,
@@ -80,7 +85,8 @@ test('Douyin publisher fills images and copy, then waits for the user to publish
   assert.equal(upload.files.length, 1)
   assert.equal(upload.files[0].name, 'image.png')
   assert.equal(title.value, '抖音标题')
-  assert.equal(editor.innerText, '正文内容\n\n#话题')
+  assert.equal(editor.innerText, '正文内容\n#添加话题 @好友')
+  assert.deepEqual(selectedTopics, ['#话题'])
   assert.deepEqual(messages, ['DY_GET_DRAFT', 'DY_CLEAR_DRAFT'])
   assert.equal(clicks, 0)
 })
