@@ -41,7 +41,7 @@ case "${1:-}" in
     ;;
   test)
     "${compose[@]}" run --rm --no-deps backend mvn -B -ntp test
-    "${compose[@]}" run --rm --no-deps frontend sh -lc 'npm ci --no-audit --no-fund && npm run build'
+    "${compose[@]}" run --rm --no-deps frontend sh -lc 'npm ci --no-audit --no-fund && npm run test && npm run build'
     docker run --rm -v "$project_dir/browser-extension:/extension:ro" node:24-bookworm-slim \
       sh -lc 'node --test /extension/xiaohongshu/test/*.test.cjs'
     ;;

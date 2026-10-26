@@ -20,6 +20,7 @@ poster:
   api-key: ${POSTER_API_KEY:}
   base-url: ${POSTER_API_BASE_URL:}
   model: ${POSTER_MODEL:qwen-image-3.0-pro}
+  daily-image-limit: ${POSTER_DAILY_IMAGE_LIMIT:40}
 
 staranaly:
   model:

@@ -1,0 +1,2 @@
+ALTER TABLE poster_jobs
+    ADD COLUMN source VARCHAR(10) NOT NULL DEFAULT 'AI';

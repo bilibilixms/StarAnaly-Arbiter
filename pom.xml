@@ -13,7 +13,7 @@
 
     <groupId>com.staranaly</groupId>
     <artifactId>staranaly-arbiter</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>1.0.0</version>
     <name>StarAnaly Arbiter</name>
     <description>StarAnaly task API</description>
 

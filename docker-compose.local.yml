@@ -21,6 +21,7 @@ services:
       POSTER_API_KEY: ${POSTER_API_KEY:-}
       POSTER_API_BASE_URL: ${POSTER_API_BASE_URL:-}
       POSTER_MODEL: ${POSTER_MODEL:-qwen-image-3.0-pro}
+      POSTER_DAILY_IMAGE_LIMIT: ${POSTER_DAILY_IMAGE_LIMIT:-40}
     ports:
       - "8080:8080"
     depends_on:

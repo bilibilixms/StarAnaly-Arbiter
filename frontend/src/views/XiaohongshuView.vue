@@ -603,8 +603,17 @@ function handleExtensionMessage(event: MessageEvent) {
   window.clearTimeout(publishTimeout)
   pendingRequestId.value = ''
   preparingPublish.value = false
+  const extensionInvalidated = typeof message.error === 'string'
+    && message.error.includes('Extension context invalidated')
+  if (extensionInvalidated) {
+    extensionReady.value = false
+    extensionVersion.value = ''
+    publicationSyncReady.value = false
+  }
   publishStatus.value = message.ok
     ? '扩展已打开小红书发布页，正在自动填入图片和文案。请到新标签页检查。'
+    : extensionInvalidated
+      ? '浏览器扩展已重新加载，当前页面仍连接着旧脚本。文案已保存，请刷新星析页面后再点“去发布（自动填入）”。'
     : (typeof message.error === 'string' ? message.error : '扩展未能打开发布页，请重试。')
 }
 
@@ -623,7 +632,7 @@ async function publishWithExtension() {
   if (!draft.value || !image.value || preparingPublish.value || saving.value || generating.value) return
   publishStatus.value = ''
   if (!publishExtensionReady.value) {
-    publishStatus.value = '请在 Edge 扩展管理页重新加载星析发布助手 0.6.0，再刷新此页面。'
+    publishStatus.value = '请在扩展管理页重新加载星析发布助手，再刷新此页面。'
     return
   }
   const topics = parseTopics()

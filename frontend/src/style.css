@@ -1811,10 +1811,31 @@ h1 {
 .xhs-extra-images img { width: 110px; height: 136px; object-fit: cover; border-radius: 12px; }
 
 .poster-studio__controls { display: grid; grid-template-columns: minmax(0, 2fr) minmax(120px, .7fr) minmax(160px, 1fr); gap: 16px; align-items: start; }
+.poster-materials__editor { display: grid; gap: 16px; margin: 20px 0; padding: 20px; border: 1px solid var(--line); border-radius: 16px; background: #f8fcff; }
+.poster-materials__editor-heading, .poster-materials__editor-actions, .poster-materials__modes, .poster-materials__item-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.poster-materials__editor-heading { justify-content: space-between; }
+.poster-materials__editor-heading h3 { margin: 0; }
+.poster-materials__form-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(180px, 1fr); gap: 16px; }
+.poster-materials__form-grid .field + .field, .poster-materials__editor > .field + .field { margin-top: 0; }
+.poster-materials__form-grid select { width: 100%; min-height: 48px; }
+.poster-materials__editor input[type="file"] { padding: 10px; }
+.poster-materials__list { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin: 18px 0; padding: 0; list-style: none; }
+.poster-materials__item { min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: #fbfdff; }
+.poster-materials__select { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.poster-materials__select input { flex: none; width: 18px; height: 18px; }
+.poster-materials__select img { width: 58px; height: 58px; border-radius: 9px; object-fit: contain; background: #fff; }
+.poster-materials__select span { display: grid; min-width: 0; gap: 3px; }
+.poster-materials__select strong, .poster-materials__select small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.poster-materials__select small, .poster-materials__excerpt { color: var(--muted); font-size: 12px; }
+.poster-materials__item-actions { margin-top: 10px; }
+.poster-materials__excerpt { display: -webkit-box; overflow: hidden; margin: 10px 0 0; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: pre-wrap; }
 .poster-studio__controls .field { min-width: 0; }
 .poster-studio__controls textarea, .poster-studio__controls select, .poster-studio__advice textarea { width: 100%; }
 .poster-studio__advice { margin-top: 18px; }
+.poster-studio__checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 16px; }
+.poster-studio__checks textarea { width: 100%; }
 .poster-preview__versions { display: flex; gap: 8px; margin: 18px 0; }
+.poster-preview__job-actions { display: flex; justify-content: flex-end; margin: 8px 0; }
 .poster-preview__versions .is-active { background: #e5f4ff; color: #245f89; }
 .poster-preview__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(185px, 1fr)); gap: 16px; margin: 18px 0; }
 .poster-preview__card { display: grid; gap: 8px; padding: 8px; border: 2px solid #d5e9f7; border-radius: 18px; background: #fff; color: #47657d; cursor: pointer; text-align: left; }
@@ -1822,8 +1843,15 @@ h1 {
 .poster-preview__card:focus-visible { outline: 3px solid #4e9bc9; outline-offset: 3px; }
 .poster-preview__card img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 11px; }
 .poster-preview__card span { padding: 2px 6px 5px; font-weight: 650; }
+.poster-preview__item { min-width: 0; }
+.poster-preview__item .poster-preview__card { width: 100%; }
+.poster-preview__checklist { display: grid; gap: 9px; margin-top: 10px; padding: 12px; border: 1px solid #d5e9f7; border-radius: 12px; background: #f7fbfe; }
+.poster-preview__checklist label { display: flex; align-items: flex-start; gap: 8px; line-height: 1.45; overflow-wrap: anywhere; }
+.poster-preview__checklist input { margin-top: 4px; flex: none; }
+.poster-preview__checklist small { color: #47657d; }
+.poster-preview__checklist .button { width: 100%; }
 .poster-preview__actions { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
-@media (max-width: 760px) { .poster-studio__controls { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .poster-studio__controls, .poster-studio__checks, .poster-materials__form-grid { grid-template-columns: 1fr; } }
 
 .share-note__content {
   display: grid;
